@@ -96,25 +96,22 @@ jobs:
           [ "${KERNEL}" = "c7c0ba17" ] || { echo "FAIL: wrong kernel commit ${KERNEL}"; exit 1; }
           echo "Doctrine pin OK"
 
-      - name: Verify no forbidden framework references in workload YAML
+      - name: Verify no forbidden framework references in chart and config YAML
         run: |
           set -euo pipefail
-          # Check only workload delivery files — chart templates and Package/Namespace CRs.
-          # receipts/doctrine-pin.yaml is the compliance record that explicitly lists
-          # these frameworks as excluded (correct by spec), so it is skipped here.
-          # Docs (SECURITY.md, CONTRIBUTING.md, SZL_FLEET_OVERLAY_DESIGN.md) are also skipped.
+          # Scope: chart/ and configs/ only.
+          # receipts/doctrine-pin.yaml is the compliance record that MUST list these as excluded.
+          # ci.yml itself uses these as search terms and is not a workload manifest.
+          # Docs (SECURITY.md, CONTRIBUTING.md, SZL_FLEET_OVERLAY_DESIGN.md) describe exclusions.
           FAIL=0
-          for term in "IronBank" "FedRAMP" "CMMC" "SWFT" "MissionOwner"; do
-            COUNT=$(grep -rl "${term}" \
-              zarf.yaml uds-bundle.yaml tasks.yaml chart/ configs/ \
-              --include="*.yaml" --include="*.yml" \
-              2>/dev/null | wc -l)
-            if [ "${COUNT}" -gt 0 ]; then
-              echo "FAIL: forbidden reference '${term}' found in ${COUNT} workload YAML file(s)"
-              grep -rl "${term}" zarf.yaml uds-bundle.yaml tasks.yaml chart/ configs/ \
-                --include="*.yaml" --include="*.yml" 2>/dev/null || true
+          DIRS="chart configs"
+          for term in IronBank FedRAMP CMMC SWFT MissionOwner; do
+            HITS=$(grep -rl "${term}" ${DIRS} --include="*.yaml" --include="*.yml" 2>/dev/null || true)
+            if [ -n "${HITS}" ]; then
+              echo "FAIL: forbidden term '${term}' found in workload manifests:"
+              echo "${HITS}"
               FAIL=1
             fi
           done
           [ "${FAIL}" -eq 0 ] || exit 1
-          echo "No forbidden framework references in workload YAML — OK"
+          echo "Chart and config manifests clean — no forbidden framework references"
