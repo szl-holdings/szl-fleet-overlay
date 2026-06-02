@@ -1,0 +1,72 @@
+includes:
+  - actions: https://raw.githubusercontent.com/defenseunicorns/uds-common/refs/tags/v1.24.9/tasks/actions.yaml
+
+variables:
+  - name: VERSION
+    default: "0.1.0"
+  - name: ARCH
+    default: "amd64"
+  - name: REGISTRY
+    default: "ghcr.io/szl-holdings"
+
+tasks:
+  - name: default
+    description: "Full build and local dev deploy"
+    actions:
+      - task: build
+      - task: deploy-local
+      - task: validate
+
+  - name: build
+    description: "Build the Zarf package"
+    actions:
+      - cmd: uds zarf package create . -a ${ARCH} --confirm --skip-sbom
+        description: "Create szl-fleet-overlay Zarf package"
+
+  - name: sign-receipts
+    description: "Generate and sign doctrine receipts"
+    actions:
+      - cmd: |
+          mkdir -p receipts
+          find configs/ -type f | sort | xargs sha256sum > receipts/checksums.txt
+          cosign sign-blob \
+            --key "${COSIGN_KEY_PATH}" \
+            --output-signature receipts/checksums.txt.sig \
+            receipts/checksums.txt
+        description: "Sign checksums with cosign"
+
+  - name: publish
+    description: "Publish to GHCR"
+    actions:
+      - cmd: uds zarf package publish zarf-package-szl-fleet-overlay-${ARCH}-${VERSION}.tar.zst oci://${REGISTRY}/
+        description: "Push package to GHCR"
+
+  - name: deploy-local
+    description: "Deploy to local k3d cluster"
+    actions:
+      - cmd: uds zarf package deploy zarf-package-szl-fleet-overlay-${ARCH}-*.tar.zst --confirm
+        description: "Deploy fleet overlay"
+
+  - name: validate
+    description: "Validate all Package CRs reached Ready phase"
+    actions:
+      - cmd: |
+          for app in a11oy sentra amaru rosie killinchu; do
+            phase=$(kubectl get package szl-${app} -n szl-${app} -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound")
+            if [ "${phase}" != "Ready" ]; then
+              echo "FAIL: szl-${app} phase=${phase}"
+              exit 1
+            fi
+            echo "OK: szl-${app} phase=Ready"
+          done
+        description: "Check Package CR phases"
+      - cmd: |
+          if [ -f receipts/checksums.txt.sig ] && [ -f receipts/cosign.pub ]; then
+            cosign verify-blob \
+              --key receipts/cosign.pub \
+              --signature receipts/checksums.txt.sig \
+              receipts/checksums.txt && echo "Receipt VALID"
+          else
+            echo "WARN: receipt sig/pubkey not found, skipping signature check"
+          fi
+        description: "Verify doctrine receipt"
