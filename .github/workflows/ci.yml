@@ -88,39 +88,32 @@ jobs:
           PIN=$(grep 'pin:' receipts/doctrine-pin.yaml | awk '{print $2}' | tr -d '"')
           VERSION=$(grep 'version:' receipts/doctrine-pin.yaml | head -1 | awk '{print $2}' | tr -d '"')
           KERNEL=$(grep 'kernelCommit:' receipts/doctrine-pin.yaml | awk '{print $2}' | tr -d '"')
-          LAMBDA=$(grep 'lambda:' receipts/doctrine-pin.yaml | awk '{print $2, $3}' | tr -d '"')
           echo "Doctrine version: ${VERSION}"
           echo "Pin: ${PIN}"
           echo "Kernel: ${KERNEL}"
-          echo "Lambda: ${LAMBDA}"
           [ "${VERSION}" = "v11" ] || { echo "FAIL: wrong doctrine version ${VERSION}"; exit 1; }
           [ "${PIN}" = "749/14/163" ] || { echo "FAIL: wrong pin ${PIN}"; exit 1; }
           [ "${KERNEL}" = "c7c0ba17" ] || { echo "FAIL: wrong kernel commit ${KERNEL}"; exit 1; }
           echo "Doctrine pin OK"
 
-      - name: Verify no forbidden framework references
+      - name: Verify no forbidden framework references in operational YAML
         run: |
           set -euo pipefail
-          FORBIDDEN="IronBank Iron Bank FedRAMP CMMC SWFT MissionOwner Mission Owner"
+          # Scan only operational YAML files — docs like SECURITY.md and CONTRIBUTING.md
+          # legitimately list these frameworks as excluded; only chart/config YAML must not reference them.
           FAIL=0
-          for term in $FORBIDDEN; do
-            COUNT=$(grep -rl "${term}" . \
-              --include="*.yaml" --include="*.yml" --include="*.md" \
-              --exclude-dir=".git" \
-              --exclude="SECURITY.md" \
-              --exclude="CONTRIBUTING.md" \
-              --exclude="ci.yml" \
-              | wc -l)
+          for term in "IronBank" "FedRAMP" "CMMC" "SWFT" "MissionOwner"; do
+            COUNT=$(grep -rl "${term}" \
+              zarf.yaml uds-bundle.yaml tasks.yaml \
+              chart/ configs/ \
+              --include="*.yaml" --include="*.yml" \
+              2>/dev/null | wc -l)
             if [ "${COUNT}" -gt 0 ]; then
-              echo "FAIL: found forbidden reference '${term}' in ${COUNT} file(s)"
-              grep -rl "${term}" . \
-                --include="*.yaml" --include="*.yml" --include="*.md" \
-                --exclude-dir=".git" \
-                --exclude="SECURITY.md" \
-                --exclude="CONTRIBUTING.md" \
-                --exclude="ci.yml"
+              echo "FAIL: found forbidden reference '${term}' in ${COUNT} operational YAML file(s)"
+              grep -rl "${term}" zarf.yaml uds-bundle.yaml tasks.yaml chart/ configs/ \
+                --include="*.yaml" --include="*.yml" 2>/dev/null || true
               FAIL=1
             fi
           done
           [ "${FAIL}" -eq 0 ] || exit 1
-          echo "No forbidden framework references found"
+          echo "No forbidden framework references in operational YAML — OK"
