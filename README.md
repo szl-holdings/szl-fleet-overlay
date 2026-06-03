@@ -215,3 +215,52 @@ DCO required. See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Security
 
 See [SECURITY.md](SECURITY.md) for honest disclosure of our security posture.
+
+---
+
+## UDS Package CRs — `uds-packages/` Directory
+
+> **Gap 2 fix (P0, Warhacker June 9):** Added `uds-packages/` alongside the existing
+> `configs/packages/` directory. These are the canonical, stand-alone Package CR YAMLs
+> for use when deploying SZL flagships independently of the full fleet overlay chart.
+
+The UDS Operator watches `Package` CRs in each flagship namespace. Without a Package CR,
+UDS Core is blind to the workload — no Istio integration, no auto-generated NetworkPolicy,
+no Keycloak SSO client, no ServiceMonitor.
+
+### Package CR locations
+
+| File | Flagship | Namespace |
+|------|----------|-----------|
+| `uds-packages/a11oy.yaml` | a11oy | `szl-a11oy` |
+| `uds-packages/sentra.yaml` | sentra | `szl-sentra` |
+| `uds-packages/amaru.yaml` | amaru | `szl-amaru` |
+| `uds-packages/rosie.yaml` | rosie | `szl-rosie` |
+| `uds-packages/killinchu.yaml` | killinchu | `szl-killinchu` |
+
+### Apply stand-alone Package CRs
+
+```bash
+# Apply a single flagship's Package CR (requires UDS Core already running)
+kubectl apply -f uds-packages/a11oy.yaml
+
+# Apply all at once
+kubectl apply -f uds-packages/
+
+# Verify operator reconciliation
+kubectl get packages -A
+kubectl describe package szl-a11oy -n szl-a11oy
+```
+
+### Package CR fields
+
+Each Package CR configures:
+- **`spec.network.expose`** — Istio VirtualService + tenant gateway ingress
+- **`spec.network.allow`** — UDS-managed NetworkPolicy rules (egress to Keycloak, Peat mesh, etc.)
+- **`spec.sso`** — Keycloak OIDC client registration (group-gated to `/szl-operators`)
+- **`spec.monitor`** — Prometheus ServiceMonitor for the metrics endpoint
+
+These are rendered from the Helm chart `_helpers.tpl` `szl-fleet.package` template when
+deploying via the Helm variant, and applied directly via the Zarf `szl-<flagship>-package`
+component.
+
