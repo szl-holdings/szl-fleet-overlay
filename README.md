@@ -1,11 +1,57 @@
-# szl-fleet-overlay
+# szl-fleet-overlay — SZL Fleet Deployment Overlay
+
+**Doctrine v11 LOCKED 749/14/163** · Λ = Conjecture 1 · SLSA L1 honest · Kernel `c7c0ba17`
 
 UDS Operator package + Helm chart + Zarf bundle + peat-mesh nodes for the 5 SZL flagships.
 Layers doctrine-pinned DSSE receipts on top of UDS Fleet.
 
+## Prerequisites
+
+- [Zarf](https://docs.zarf.dev/getting-started/install/) v0.38+
+- [UDS CLI](https://uds.defenseunicorns.com/docs/getting-started/) v0.14+  
+- [cosign](https://docs.sigstore.dev/cosign/installation/) v2.2+ (for signature verification)
+- A running UDS Core cluster (K3d for development: `uds deploy k3d-core`)
+
+## Quickstart — Deploy the Full Fleet Overlay
+
+```bash
+# Pull and deploy the overlay (bundles all 5 SZL flagships)
+zarf package pull oci://ghcr.io/szl-holdings/szl-fleet-overlay:0.1.0
+
+# Verify before deploying
+cosign verify-blob \
+  --certificate-identity-regexp "https://github.com/szl-holdings/szl-fleet-overlay/.github/workflows/.*" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --bundle zarf-package-szl-fleet-overlay-amd64-0.1.0.tar.zst.sigstore.json \
+  zarf-package-szl-fleet-overlay-amd64-0.1.0.tar.zst
+
+uds deploy oci://ghcr.io/szl-holdings/szl-fleet-overlay:0.1.0
+```
+
+## Runtime demonstration
+
+Each flagship runs live on Hugging Face — same payload, different runtime:
+- **a11oy:** [szlholdings-a11oy.hf.space](https://szlholdings-a11oy.hf.space)
+- **sentra:** [szlholdings-sentra.hf.space](https://szlholdings-sentra.hf.space)
+- **amaru:** [szlholdings-amaru.hf.space](https://szlholdings-amaru.hf.space)
+- **rosie:** [szlholdings-rosie.hf.space](https://szlholdings-rosie.hf.space)
+- **killinchu:** [szlholdings-killinchu.hf.space](https://szlholdings-killinchu.hf.space)
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|-------------|-----|
+| Package CR in `Pending` | Istio not ready | Wait for UDS Core istio-system; `kubectl get pods -n istio-system` |
+| SSO redirect loops | Keycloak client not registered | Re-run `uds deploy` to sync SSO CRs |
+| `zarf: permission denied` | Registry auth | `zarf tools registry login ghcr.io` |
+| Pods not starting | Image pull backoff | Check GHCR token; `kubectl describe pod -n szl-<flagship>` |
+| cosign verify fails | Wrong bundle filename | Match exact tag from release assets |
+
+---
+
 <!-- Doctrine: v11 LOCKED 749/14/163 at kernel commit c7c0ba17 | Λ = Conjecture 1 | SLSA L1 | Section 889 = 5 vendors -->
 
-## What This Is
+
 
 `szl-fleet-overlay` registers each SZL flagship application — **a11oy, sentra, amaru, rosie, killinchu** — as a first-class UDS-managed application running on top of [UDS Core](https://github.com/defenseunicorns/uds-core).
 
