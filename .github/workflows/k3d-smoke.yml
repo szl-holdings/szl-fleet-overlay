@@ -42,6 +42,11 @@ concurrency:
 env:
   K3D_VERSION:     5.8.3
   UDS_VERSION:     0.18.0
+  # NOTE (UDS Core 1.0 alignment): "0.33.0-upstream" is a pre-1.0 ref kept here only
+  # because the upstream OCI tag could not be re-verified from this environment, and the
+  # deploy step below is continue-on-error (non-gating). UDS Core hit 1.0 on 2026-03-25;
+  # the canonical local target is k3d-core-slim-dev:0.40.1. FOUNDER-VERIFY before the
+  # June 9 rehearsal: confirm the published tag and bump this + the Makefile together.
   UDS_CORE_TAG:    0.33.0-upstream
   CLUSTER_NAME:    szl-smoke
   KUBECONFIG:      /tmp/szl-smoke-kubeconfig.yaml

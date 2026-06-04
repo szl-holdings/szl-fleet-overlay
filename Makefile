@@ -18,6 +18,9 @@ SHELL        := /usr/bin/env bash
 CLUSTER_NAME := szl-demo
 UDS_VERSION  := 0.18.0
 K3D_VERSION  := 5.8.3
+# NOTE (UDS Core 1.0 alignment): pre-1.0 ref retained pending upstream-tag re-verify.
+# Canonical local target after UDS Core 1.0 (2026-03-25) is k3d-core-slim-dev:0.40.1.
+# FOUNDER-VERIFY before June 9 rehearsal; bump with .github/workflows/k3d-smoke.yml.
 UDS_CORE_TAG := 0.33.0-upstream
 ARCH         := amd64
 

@@ -355,7 +355,7 @@ kubectl describe pod -n szl-a11oy -l app=szl-a11oy | grep -A5 Events
 **Fix options:**
 1. Log in to GHCR: `echo $GITHUB_TOKEN | docker login ghcr.io -u szl-holdings --password-stdin`
 2. Wait for rate limit to clear (1 hour)
-3. Pre-pull images: `docker pull ghcr.io/szl-holdings/a11oy:latest`
+3. Pre-pull images: `docker pull ghcr.io/szl-holdings/a11oy:uds-v0.2.0`
 4. For air-gap: see Section 5
 
 ---
@@ -465,8 +465,8 @@ uds zarf package pull oci://ghcr.io/defenseunicorns/packages/uds/core:0.33.0-ups
 
 # Pull and save flagship images
 for app in a11oy sentra amaru rosie killinchu; do
-  docker pull ghcr.io/szl-holdings/${app}:latest
-  docker save ghcr.io/szl-holdings/${app}:latest > /media/usb/${app}-image.tar
+  docker pull ghcr.io/szl-holdings/${app}:uds-v0.2.0
+  docker save ghcr.io/szl-holdings/${app}:uds-v0.2.0 > /media/usb/${app}-image.tar
 done
 ```
 
