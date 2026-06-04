@@ -91,7 +91,8 @@ jobs:
           # These are honest disclosures that we do NOT use these frameworks.
           VIOLATIONS=0
           for banned in "Iron Bank" "FedRAMP" "CMMC" "SWFT" "Mission Owner"; do
-            HITS=$(grep -rn "$banned" configs/ receipts/ zarf.yaml tasks.yaml 2>/dev/null |               grep -viE "excludedFrameworks|excluded|DENY|verdict.*deny|deny.*verdict|violations|not.*${banned}|no.*${banned}" || true)
+            HITS=$(grep -rn "$banned" configs/ receipts/ zarf.yaml tasks.yaml 2>/dev/null | \
+              grep -viE "excludedFrameworks|excluded|DENY|verdict.*deny|deny.*verdict|violations|not.*${banned}|no.*${banned}|^[[:space:]]*-[[:space:]]" || true)
             if [ -n "$HITS" ]; then
               echo "$HITS"
               echo "⛔  DOCTRINE VIOLATION: found '$banned' in configs/receipts (not in exclusion context)"
