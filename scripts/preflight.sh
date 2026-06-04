@@ -87,7 +87,7 @@ if command -v uds >/dev/null 2>&1; then
   UDS_VER=$(uds version 2>/dev/null || echo "unknown")
   pass "uds CLI found — $UDS_VER"
 else
-  fail "uds CLI not found. Install: curl -L https://github.com/defenseunicorns/uds-cli/releases/download/v0.18.0/uds-cli_v0.18.0_Linux_amd64.tar.gz | tar -xz -C /usr/local/bin/ uds"
+  fail "uds CLI not found. Install (raw binary, not a tarball): curl -fSL https://github.com/defenseunicorns/uds-cli/releases/download/v0.32.0/uds-cli_v0.32.0_Linux_amd64 -o /usr/local/bin/uds && chmod +x /usr/local/bin/uds"
 fi
 
 # ─────────────────────────────────────────────────────────

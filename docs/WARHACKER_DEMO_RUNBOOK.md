@@ -43,12 +43,13 @@ k3d version               # need v5.8.x
 mise use kubectl@1.30
 kubectl version --client  # need v1.30.x
 
-# 4. UDS CLI (bundles Zarf)
-UDS_VERSION="0.18.0"
-curl -L "https://github.com/defenseunicorns/uds-cli/releases/download/v${UDS_VERSION}/uds-cli_v${UDS_VERSION}_Linux_amd64.tar.gz" \
-  | tar -xz -C /usr/local/bin/ uds
+# 4. UDS CLI (bundles Zarf v0.77.0). The Linux release asset is a RAW binary,
+#    NOT a .tar.gz — download it directly (do not pipe through tar).
+UDS_VERSION="0.32.0"
+curl -fSL "https://github.com/defenseunicorns/uds-cli/releases/download/v${UDS_VERSION}/uds-cli_v${UDS_VERSION}_Linux_amd64" \
+  -o /usr/local/bin/uds
 chmod +x /usr/local/bin/uds
-uds version               # need 0.18.0
+uds version               # need 0.32.0
 
 # 5. Python 3 (usually already installed)
 python3 --version         # need ≥ 3.9
@@ -105,7 +106,7 @@ bash scripts/preflight.sh
 3. kubectl
   ✅  PASS  kubectl found — v1.30.x
 4. uds CLI
-  ✅  PASS  uds CLI found — 0.18.0
+  ✅  PASS  uds CLI found — 0.32.0
 5. Port availability (80, 443, 6550)
   ✅  PASS  Port 80 is free
   ✅  PASS  Port 443 is free
@@ -460,7 +461,7 @@ docker save ghcr.io/defenseunicorns/uds-k3d/k3s:v1.35.4-k3s1 > /media/usb/k3s-im
 
 # Pull and save UDS Core images (large - ~4GB)
 # uds-core packs its images into the Zarf package
-uds zarf package pull oci://ghcr.io/defenseunicorns/packages/uds/core:0.33.0-upstream-amd64
+uds zarf package pull oci://ghcr.io/defenseunicorns/packages/uds/core:0.42.0-upstream-amd64
 # Copy the resulting .tar.zst to USB
 
 # Pull and save flagship images
@@ -484,7 +485,7 @@ make cluster-create
 
 # Deploy from local .tar.zst files
 uds zarf init --confirm
-uds deploy /path/to/uds-core-0.33.0-upstream-amd64.tar.zst --confirm
+uds deploy /path/to/uds-core-0.42.0-upstream-amd64.tar.zst --confirm
 
 # Deploy flagships (images already loaded, k3d will find them)
 make flagships-deploy szl-mesh-deploy seed-receipts

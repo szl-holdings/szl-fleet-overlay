@@ -9,7 +9,8 @@ packages:
   # Phase 1: UDS Core (prerequisite — must be deployed first)
   - name: core
     repository: ghcr.io/defenseunicorns/packages/uds/core
-    ref: "0.33.0-upstream"
+    # UPSTREAM flavor (NOT registry1/Iron Bank); verified published + pullable on GHCR.
+    ref: "0.42.0-upstream"
     overrides:
       istio-admin-gateway:
         uds-istio-admin-gateway:
