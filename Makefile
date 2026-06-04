@@ -16,12 +16,13 @@ SHELL        := /usr/bin/env bash
 .SHELLFLAGS  := -euo pipefail -c
 
 CLUSTER_NAME := szl-demo
-UDS_VERSION  := 0.18.0
+# Canonical SZL toolchain: uds-cli v0.32.0 (ships Zarf v0.77.0).
+UDS_VERSION  := 0.32.0
 K3D_VERSION  := 5.8.3
-# NOTE (UDS Core 1.0 alignment): pre-1.0 ref retained pending upstream-tag re-verify.
-# Canonical local target after UDS Core 1.0 (2026-03-25) is k3d-core-slim-dev:0.40.1.
-# FOUNDER-VERIFY before June 9 rehearsal; bump with .github/workflows/k3d-smoke.yml.
-UDS_CORE_TAG := 0.33.0-upstream
+# UDS Core OCI tag — UPSTREAM flavor (NOT registry1/Iron Bank). Verified published +
+# pullable on GHCR: ghcr.io/defenseunicorns/packages/uds/core:0.42.0-upstream (the
+# demo/slim-dev target in team/uds_latest_specs.md). Kept in lock-step with k3d-smoke.yml.
+UDS_CORE_TAG := 0.42.0-upstream
 ARCH         := amd64
 
 # HF Space base URL (live fallback endpoints)
