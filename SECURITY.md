@@ -15,7 +15,7 @@ We do not overclaim compliance levels.
 
 - Doctrine-pinned receipts (`receipts/checksums.txt` + cosign detached signature) provide
   integrity attestation for all config files at build time.
-- We do **not** claim SLSA L2 or L3. No hermetic build environment, no SLSA provenance
+- We do not claim higher SLSA levels (higher levels not yet achieved). No hermetic build environment, no SLSA provenance
   predicate, no Sigstore Fulcio certificate chain.
 - Cosign signing key is operator-managed (not keyless).
 
@@ -55,11 +55,11 @@ referenced workload.
 
 The following frameworks are **not** used or claimed in this package:
 
-- Iron Bank / Platform One — not used
+- Not Iron Bank certified / not Platform One — not used
 - FedRAMP — not claimed
 - CMMC — not claimed
 - SWFT — not used
-- Mission Owner authorization — not present
+- No Mission Owner authorization path — out of scope for this overlay
 - DoD identity / CAC — not required
 
 ---
