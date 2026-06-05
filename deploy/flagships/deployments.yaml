@@ -31,7 +31,7 @@ spec:
     spec:
       containers:
         - name: a11oy
-          image: ghcr.io/szl-holdings/a11oy:latest
+          image: ghcr.io/szl-holdings/a11oy:uds-v0.2.0
           imagePullPolicy: Always
           ports:
             - name: http
@@ -117,7 +117,7 @@ spec:
     spec:
       containers:
         - name: sentra
-          image: ghcr.io/szl-holdings/sentra:latest
+          image: ghcr.io/szl-holdings/sentra:uds-v0.2.0
           imagePullPolicy: Always
           ports:
             - name: http
@@ -203,7 +203,7 @@ spec:
     spec:
       containers:
         - name: amaru
-          image: ghcr.io/szl-holdings/amaru:latest
+          image: ghcr.io/szl-holdings/amaru:uds-v0.2.0
           imagePullPolicy: Always
           ports:
             - name: http
@@ -289,7 +289,7 @@ spec:
     spec:
       containers:
         - name: rosie
-          image: ghcr.io/szl-holdings/rosie:latest
+          image: ghcr.io/szl-holdings/rosie:uds-v0.2.0
           imagePullPolicy: Always
           ports:
             - name: http
@@ -375,7 +375,7 @@ spec:
     spec:
       containers:
         - name: killinchu
-          image: ghcr.io/szl-holdings/killinchu:latest
+          image: ghcr.io/szl-holdings/killinchu:uds-v0.2.0
           imagePullPolicy: Always
           ports:
             - name: http

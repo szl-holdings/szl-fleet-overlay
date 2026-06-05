@@ -632,7 +632,7 @@ tasks:
 Phase                     Command
 ─────────────────────────────────────────────────────────────────
 1. Zarf init (once)       uds zarf init --confirm
-2. Deploy uds-core        uds deploy oci://ghcr.io/defenseunicorns/packages/uds/core:0.33.0-upstream
+2. Deploy uds-core        uds deploy oci://ghcr.io/defenseunicorns/packages/uds/core:0.42.0-upstream
 3. Deploy fleet overlay   uds deploy oci://ghcr.io/szl-holdings/fleet-overlay:0.1.0 --confirm
    (or Helm variant)      helm upgrade --install szl-fleet-overlay ./chart -n szl-system --create-namespace \
                             -f chart/values/prod.yaml
