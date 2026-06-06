@@ -30,11 +30,8 @@ uds deploy oci://ghcr.io/szl-holdings/szl-fleet-overlay:0.1.0
 
 ## Runtime demonstration
 
-Each flagship runs live on Hugging Face — same payload, different runtime:
+The two products run live on Hugging Face — same payload, different runtime:
 - **a11oy:** [szlholdings-a11oy.hf.space](https://szlholdings-a11oy.hf.space)
-- **sentra:** [szlholdings-sentra.hf.space](https://szlholdings-sentra.hf.space)
-- **amaru:** [szlholdings-amaru.hf.space](https://szlholdings-amaru.hf.space)
-- **rosie:** [szlholdings-rosie.hf.space](https://szlholdings-rosie.hf.space)
 - **killinchu:** [szlholdings-killinchu.hf.space](https://szlholdings-killinchu.hf.space)
 
 ## Troubleshooting
@@ -53,11 +50,11 @@ Each flagship runs live on Hugging Face — same payload, different runtime:
 
 
 
-`szl-fleet-overlay` registers each SZL flagship application — **a11oy, sentra, amaru, rosie, killinchu** — as a first-class UDS-managed application running on top of [UDS Core](https://github.com/defenseunicorns/uds-core).
+`szl-fleet-overlay` registers the SZL applications — the **a11oy** command platform (and its policy, memory and operator capability services) plus **killinchu** (drones & vessels) — as first-class UDS-managed applications running on top of [UDS Core](https://github.com/defenseunicorns/uds-core). The per-service workload names below retain the original internal identifiers.
 
 It provides:
 
-1. **UDS `Package` CRs** for each flagship — Istio routing, NetworkPolicy, SSO (Keycloak), and portal tiles
+1. **UDS `Package` CRs** for each application — Istio routing, NetworkPolicy, SSO (Keycloak), and portal tiles
 2. **Doctrine-pinned receipts** (`checksums.txt` + cosign detached signatures) for SLSA L1 honest attestation
 3. **Three deployment variants**: pure Zarf (air-gap canonical), Helm chart (GitOps), peat-mesh-node (CRDT sync)
 
@@ -69,13 +66,13 @@ See [`SZL_FLEET_OVERLAY_DESIGN.md`](https://github.com/szl-holdings/szl-fleet-ov
 
 ## Fleet Application Inventory
 
-| App        | Namespace      | Port | SSO Client ID       | Peat Node |
-|------------|---------------|------|---------------------|-----------|
-| a11oy      | `szl-a11oy`   | 8080 | `uds-szl-a11oy`     | Yes       |
-| sentra     | `szl-sentra`  | 8080 | `uds-szl-sentra`    | Yes       |
-| amaru      | `szl-amaru`   | 8080 | `uds-szl-amaru`     | Yes       |
-| rosie      | `szl-rosie`   | 8080 | `uds-szl-rosie`     | Yes       |
-| killinchu  | `szl-killinchu`| 8080 | `uds-szl-killinchu` | Yes       |
+| App / capability        | Namespace      | Port | SSO Client ID       | Peat Node |
+|-------------------------|---------------|------|---------------------|-----------|
+| a11oy (command)         | `szl-a11oy`   | 8080 | `uds-szl-a11oy`     | Yes       |
+| a11oy — policy/gate     | `szl-sentra`  | 8080 | `uds-szl-sentra`    | Yes       |
+| a11oy — memory          | `szl-amaru`   | 8080 | `uds-szl-amaru`     | Yes       |
+| a11oy — operator        | `szl-rosie`   | 8080 | `uds-szl-rosie`     | Yes       |
+| killinchu               | `szl-killinchu`| 8080 | `uds-szl-killinchu` | Yes       |
 
 All applications are served over the UDS **tenant** gateway. SSO group gate: `/szl-operators`.
 
@@ -230,12 +227,12 @@ no Keycloak SSO client, no ServiceMonitor.
 
 ### Package CR locations
 
-| File | Flagship | Namespace |
-|------|----------|-----------|
-| `uds-packages/a11oy.yaml` | a11oy | `szl-a11oy` |
-| `uds-packages/sentra.yaml` | sentra | `szl-sentra` |
-| `uds-packages/amaru.yaml` | amaru | `szl-amaru` |
-| `uds-packages/rosie.yaml` | rosie | `szl-rosie` |
+| File | App / capability | Namespace |
+|------|------------------|-----------|
+| `uds-packages/a11oy.yaml` | a11oy (command) | `szl-a11oy` |
+| `uds-packages/sentra.yaml` | a11oy — policy/gate | `szl-sentra` |
+| `uds-packages/amaru.yaml` | a11oy — memory | `szl-amaru` |
+| `uds-packages/rosie.yaml` | a11oy — operator | `szl-rosie` |
 | `uds-packages/killinchu.yaml` | killinchu | `szl-killinchu` |
 
 ### Apply stand-alone Package CRs
