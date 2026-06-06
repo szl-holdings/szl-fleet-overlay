@@ -1,9 +1,11 @@
 # szl-fleet-overlay — SZL Fleet Deployment Overlay
 
-**Doctrine v11 LOCKED 749/14/163** · Λ = Conjecture 1 · SLSA L1 honest · Kernel `c7c0ba17`
+**Doctrine v11 LOCKED 749/14/163** · Λ = Conjecture 1 · SLSA L1+L2 honest (NOT L3) · Kernel `c7c0ba17`
 
-UDS Operator package + Helm chart + Zarf bundle + peat-mesh nodes for the 5 SZL flagships.
+UDS Operator packages + Helm chart + Zarf bundle + peat-mesh nodes for the 5 SZL service surfaces.
 Layers doctrine-pinned DSSE receipts on top of UDS Fleet.
+
+**Deployment story:** this overlay is the UDS Operator entry point. Bundle manifests live in [uds-bundles](https://github.com/szl-holdings/uds-bundles); air-gap deploy procedures in [szl-uds-deployment](https://github.com/szl-holdings/szl-uds-deployment); the CRDT coordination layer is [szl-mesh](https://github.com/szl-holdings/szl-mesh).
 
 ## Prerequisites
 
@@ -15,7 +17,7 @@ Layers doctrine-pinned DSSE receipts on top of UDS Fleet.
 ## Quickstart — Deploy the Full Fleet Overlay
 
 ```bash
-# Pull and deploy the overlay (bundles all 5 SZL flagships)
+# Pull and deploy the overlay (bundles all 5 SZL service surfaces)
 zarf package pull oci://ghcr.io/szl-holdings/szl-fleet-overlay:0.1.0
 
 # Verify before deploying
@@ -46,7 +48,7 @@ The two products run live on Hugging Face — same payload, different runtime:
 
 ---
 
-<!-- Doctrine: v11 LOCKED 749/14/163 at kernel commit c7c0ba17 | Λ = Conjecture 1 | SLSA L1 | Section 889 = 5 vendors -->
+<!-- Doctrine: v11 LOCKED 749/14/163 at kernel commit c7c0ba17 | Λ = Conjecture 1 | SLSA L1+L2 honest (NOT L3) | Section 889 = 5 vendors -->
 
 
 
@@ -119,7 +121,7 @@ The chart renders the same Package CRs as the Zarf variant, parameterized via `c
 
 ### Variant 3 — Peat Mesh Node (CRDT state sync)
 
-The peat-mesh-node variant wraps the fleet overlay with `peat-node` sidecars, enabling Automerge+Iroh QUIC CRDT-based state sync between SZL flagship apps.
+The peat-mesh-node variant wraps the fleet overlay with `peat-node` sidecars, enabling Automerge+Iroh QUIC CRDT-based state sync between SZL applications.
 
 Configs live in `configs/peat/`. Deploy via the Zarf or Helm variant — peat mesh nodes are an optional component (`required: false, default: true` in `zarf.yaml`).
 
@@ -158,14 +160,14 @@ szl-fleet-overlay/
 │   │   └── prod.yaml
 │   └── templates/
 │       ├── _helpers.tpl
-│       ├── package-{app}.yaml         # One per flagship (5 total)
+│       ├── package-{app}.yaml         # One per service surface (5 total)
 │       └── namespace-{app}.yaml       # (rendered by _helpers.tpl)
 │
 ├── configs/
 │   ├── packages/                      # Package CR YAMLs (all variants)
-│   │   └── package-{app}.yaml         # One per flagship
+│   │   └── package-{app}.yaml         # One per service surface
 │   └── peat/                          # Peat mesh node configs
-│       └── peat-node-{app}.yaml       # One per flagship
+│       └── peat-node-{app}.yaml       # One per service surface
 │
 └── receipts/                          # Doctrine-pinned receipts
     ├── checksums.txt                  # SHA256 of every config file
@@ -179,7 +181,7 @@ szl-fleet-overlay/
 
 | Control              | Status                                    |
 |----------------------|-------------------------------------------|
-| SLSA Level           | L1 (honest attestation only)              |
+| SLSA Level           | L1+L2 (honest attestation only — NOT L3)  |
 | Doctrine             | v11 LOCKED — 749/14/163 — kernel `c7c0ba17` |
 | Λ                    | Conjecture 1 (NEVER theorem)              |
 | Section 889 vendors  | 5 — Huawei, ZTE, Hytera, Hikvision, Dahua (excluded) |
