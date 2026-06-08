@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "SZL Holdings — szl-fleet-overlay"
+date-released: "2026-06-08"
+license: Apache-2.0
+repository-code: "https://github.com/szl-holdings/szl-fleet-overlay"
+url: "https://szlholdings.com"
+abstract: >
+  UDS Operator packages, Helm chart, Zarf bundle, and peat-mesh nodes that register
+  SZL's five governance service surfaces as first-class UDS-managed applications,
+  layering doctrine-pinned DSSE receipts on top of UDS Fleet.
+keywords:
+  - governance
+  - agentic-ai
+  - doctrine-v11
+  - uds
+  - dsse
+  - sovereign-ai
+authors:
+  - name: "SZL Holdings"
+    website: "https://szlholdings.com"
+    email: "hello@szlholdings.ai"

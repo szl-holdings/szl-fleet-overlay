@@ -1,5 +1,7 @@
 # szl-fleet-overlay — SZL Fleet Deployment Overlay
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](LICENSE)
+
 **Doctrine v11 LOCKED 749/14/163** · Λ = Conjecture 1 · SLSA L1+L2 honest (NOT L3) · Kernel `c7c0ba17`
 
 UDS Operator packages + Helm chart + Zarf bundle + peat-mesh nodes for the 5 SZL service surfaces.
