@@ -1,6 +1,6 @@
 # szl-fleet-overlay — SZL Fleet Deployment Overlay
 
-**Doctrine v11 LOCKED 749/14/163** · Λ = Conjecture 1 · SLSA L1 honest · L2 verified-provenance on roadmap (NOT L3) · Kernel `c7c0ba17`
+**Doctrine v11 LOCKED 749/14/163** · Λ = Conjecture 1 · SLSA L1+L2 honest (NOT L3) · Kernel `c7c0ba17`
 
 UDS Operator packages + Helm chart + Zarf bundle + peat-mesh nodes for the 5 SZL service surfaces.
 Layers doctrine-pinned DSSE receipts on top of UDS Fleet.
@@ -48,11 +48,11 @@ The two products run live on Hugging Face — same payload, different runtime:
 
 ---
 
-<!-- Doctrine: v11 LOCKED 749/14/163 at kernel commit c7c0ba17 | Λ = Conjecture 1 | SLSA L1 honest, L2 verified-provenance on roadmap (NOT L3) | Section 889 = 5 vendors -->
+<!-- Doctrine: v11 LOCKED 749/14/163 at kernel commit c7c0ba17 | Λ = Conjecture 1 | SLSA L1+L2 honest (NOT L3) | Section 889 = 5 vendors -->
 
 
 
-`szl-fleet-overlay` registers the SZL applications — the **a11oy** command platform (and its policy, memory and operator capability services) plus **killinchu** (drones & vessels) — as first-class UDS-managed applications running on top of [UDS Core](https://github.com/defenseunicorns/uds-core). The per-service namespaces, SSO client IDs, and Package-CR file names below retain the **original internal identifiers** (`szl-sentra`, `szl-amaru`, `szl-rosie`) — these are **immutable infra coordinates** used directly in `kubectl`/`uds` commands, so they are kept verbatim. In user-facing terms these capabilities are the **CHAPAQ** egress immune-inspector (policy/gate), the **YACHAY** read-only reasoning cortex (memory), and the operator console respectively.
+`szl-fleet-overlay` registers the SZL applications — the **a11oy** command platform (and its policy, memory and operator capability services) plus **killinchu** (drones & vessels) — as first-class UDS-managed applications running on top of [UDS Core](https://github.com/defenseunicorns/uds-core). The per-service workload names below retain the original internal identifiers.
 
 It provides:
 
@@ -71,9 +71,9 @@ See [`SZL_FLEET_OVERLAY_DESIGN.md`](https://github.com/szl-holdings/szl-fleet-ov
 | App / capability        | Namespace      | Port | SSO Client ID       | Peat Node |
 |-------------------------|---------------|------|---------------------|-----------|
 | a11oy (command)         | `szl-a11oy`   | 8080 | `uds-szl-a11oy`     | Yes       |
-| a11oy — CHAPAQ egress immune-inspector (policy/gate) | `szl-sentra`  | 8080 | `uds-szl-sentra`    | Yes       |
-| a11oy — YACHAY read-only reasoning cortex (memory)   | `szl-amaru`   | 8080 | `uds-szl-amaru`     | Yes       |
-| a11oy — operator console        | `szl-rosie`   | 8080 | `uds-szl-rosie`     | Yes       |
+| a11oy — policy/gate     | `szl-sentra`  | 8080 | `uds-szl-sentra`    | Yes       |
+| a11oy — memory          | `szl-amaru`   | 8080 | `uds-szl-amaru`     | Yes       |
+| a11oy — operator        | `szl-rosie`   | 8080 | `uds-szl-rosie`     | Yes       |
 | killinchu               | `szl-killinchu`| 8080 | `uds-szl-killinchu` | Yes       |
 
 All applications are served over the UDS **tenant** gateway. SSO group gate: `/szl-operators`.
@@ -133,7 +133,7 @@ Configs live in `configs/peat/`. Deploy via the Zarf or Helm variant — peat me
 Phase                     Command
 ─────────────────────────────────────────────────────────────────
 1. Zarf init (once)       uds zarf init --confirm
-2. Deploy uds-core        uds deploy oci://ghcr.io/defenseunicorns/packages/uds/core:0.42.0-upstream
+2. Deploy uds-core        uds deploy oci://ghcr.io/defenseunicorns/packages/uds/core:1.5.0-upstream
 3. Deploy fleet overlay   uds deploy oci://ghcr.io/szl-holdings/fleet-overlay:0.1.0 --confirm
    (or Helm variant)      helm upgrade --install szl-fleet-overlay ./chart -n szl-system --create-namespace \
                             -f chart/values/prod.yaml
@@ -181,7 +181,7 @@ szl-fleet-overlay/
 
 | Control              | Status                                    |
 |----------------------|-------------------------------------------|
-| SLSA Level           | L1 honest · L2 verified-provenance on roadmap (NOT L3) |
+| SLSA Level           | L1+L2 (honest attestation only — NOT L3)  |
 | Doctrine             | v11 LOCKED — 749/14/163 — kernel `c7c0ba17` |
 | Λ                    | Conjecture 1 (NEVER theorem)              |
 | Section 889 vendors  | 5 — Huawei, ZTE, Hytera, Hikvision, Dahua (excluded) |
@@ -232,9 +232,9 @@ no Keycloak SSO client, no ServiceMonitor.
 | File | App / capability | Namespace |
 |------|------------------|-----------|
 | `uds-packages/a11oy.yaml` | a11oy (command) | `szl-a11oy` |
-| `uds-packages/sentra.yaml` | a11oy — CHAPAQ egress immune-inspector (policy/gate) | `szl-sentra` |
-| `uds-packages/amaru.yaml` | a11oy — YACHAY read-only reasoning cortex (memory) | `szl-amaru` |
-| `uds-packages/rosie.yaml` | a11oy — operator console | `szl-rosie` |
+| `uds-packages/sentra.yaml` | a11oy — policy/gate | `szl-sentra` |
+| `uds-packages/amaru.yaml` | a11oy — memory | `szl-amaru` |
+| `uds-packages/rosie.yaml` | a11oy — operator | `szl-rosie` |
 | `uds-packages/killinchu.yaml` | killinchu | `szl-killinchu` |
 
 ### Apply stand-alone Package CRs

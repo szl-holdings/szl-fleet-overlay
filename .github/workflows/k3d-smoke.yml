@@ -46,11 +46,11 @@ env:
   UDS_VERSION:     0.32.0
   # UDS Core OCI tag. UPSTREAM flavor (NOT registry1/Iron Bank — keeps the honesty line
   # clean). Verified published + pullable on GHCR from this environment:
-  #   ghcr.io/defenseunicorns/packages/uds/core:0.42.0-upstream
+  #   ghcr.io/defenseunicorns/packages/uds/core:1.5.0-upstream
   # (the demo/slim-dev target named in team/uds_latest_specs.md). UDS Core 1.x exists
-  # upstream; 0.42.0 is the spec-pinned local target. The deploy step is continue-on-error
+  # upstream; 1.5.0 is the unified target — matched to szl-uds-deployment (was 0.42.0; see #2 drift). The deploy step is continue-on-error
   # (non-gating); the gating proof is the cluster-independent package build below.
-  UDS_CORE_TAG:    0.42.0-upstream
+  UDS_CORE_TAG:    1.5.0-upstream
   CLUSTER_NAME:    szl-smoke
   KUBECONFIG:      /tmp/szl-smoke-kubeconfig.yaml
   DOCTRINE_PIN:    "749/14/163"

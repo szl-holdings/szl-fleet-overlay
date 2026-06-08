@@ -461,7 +461,7 @@ docker save ghcr.io/defenseunicorns/uds-k3d/k3s:v1.35.4-k3s1 > /media/usb/k3s-im
 
 # Pull and save UDS Core images (large - ~4GB)
 # uds-core packs its images into the Zarf package
-uds zarf package pull oci://ghcr.io/defenseunicorns/packages/uds/core:0.42.0-upstream-amd64
+uds zarf package pull oci://ghcr.io/defenseunicorns/packages/uds/core:1.5.0-upstream-amd64
 # Copy the resulting .tar.zst to USB
 
 # Pull and save flagship images
@@ -485,7 +485,7 @@ make cluster-create
 
 # Deploy from local .tar.zst files
 uds zarf init --confirm
-uds deploy /path/to/uds-core-0.42.0-upstream-amd64.tar.zst --confirm
+uds deploy /path/to/uds-core-1.5.0-upstream-amd64.tar.zst --confirm
 
 # Deploy flagships (images already loaded, k3d will find them)
 make flagships-deploy szl-mesh-deploy seed-receipts

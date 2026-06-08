@@ -10,15 +10,15 @@ packages:
   - name: core
     repository: ghcr.io/defenseunicorns/packages/uds/core
     # UPSTREAM flavor (NOT registry1/Iron Bank); verified published + pullable on GHCR.
-    ref: "0.42.0-upstream"
+    ref: "1.5.0-upstream"
     overrides:
       istio-admin-gateway:
-        uds-istio-admin-gateway:
+        gateway:
           values:
             - path: "service.annotations"
               value: {}
       istio-tenant-gateway:
-        uds-istio-tenant-gateway:
+        gateway:
           values:
             - path: "service.annotations"
               value: {}

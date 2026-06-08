@@ -20,9 +20,9 @@ CLUSTER_NAME := szl-demo
 UDS_VERSION  := 0.32.0
 K3D_VERSION  := 5.8.3
 # UDS Core OCI tag — UPSTREAM flavor (NOT registry1/Iron Bank). Verified published +
-# pullable on GHCR: ghcr.io/defenseunicorns/packages/uds/core:0.42.0-upstream (the
+# pullable on GHCR: ghcr.io/defenseunicorns/packages/uds/core:1.5.0-upstream (the
 # demo/slim-dev target in team/uds_latest_specs.md). Kept in lock-step with k3d-smoke.yml.
-UDS_CORE_TAG := 0.42.0-upstream
+UDS_CORE_TAG := 1.5.0-upstream
 ARCH         := amd64
 
 # HF Space base URL (live fallback endpoints)
