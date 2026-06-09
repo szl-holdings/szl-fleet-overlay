@@ -5,6 +5,9 @@
 **Doctrine v11 LOCKED 749/14/163** · Λ = Conjecture 1 · SLSA L1+L2 honest (NOT L3) · Kernel `c7c0ba17`
 
 UDS Operator packages + Helm chart + Zarf bundle + peat-mesh nodes for the 5 SZL service surfaces.
+
+> **Trademark / non-affiliation notice.** SZL Holdings' use of "UDS" references Defense Unicorns' Unified Defense Stack (USPTO Serial 99831122). SZL Holdings is **not affiliated with Defense Unicorns**. SZL contributions to the UDS ecosystem are made through upstream PRs. Upstream **UDS Core** (AGPL-3.0) is used as a **deployment pattern / dependency only — it is not vendored or adopted into this repository**. See https://defenseunicorns.com/uds
+
 Layers doctrine-pinned DSSE receipts on top of UDS Fleet.
 
 **Deployment story:** this overlay is the UDS Operator entry point. Bundle manifests live in [uds-bundles](https://github.com/szl-holdings/uds-bundles); air-gap deploy procedures in [szl-uds-deployment](https://github.com/szl-holdings/szl-uds-deployment); the CRDT coordination layer is [szl-mesh](https://github.com/szl-holdings/szl-mesh).
@@ -264,4 +267,5 @@ Each Package CR configures:
 These are rendered from the Helm chart `_helpers.tpl` `szl-fleet.package` template when
 deploying via the Helm variant, and applied directly via the Zarf `szl-<flagship>-package`
 component.
+
 
