@@ -448,6 +448,58 @@ make demo-up
 
 ---
 
+### 4.9 Rollback — revert the overlay to a known-good version
+
+**Symptom:** A freshly deployed overlay version misbehaves (a flagship will not reach
+`Ready`, a Package CR is wrong, a receipt chain regresses) and you need to get back to
+the last known-good state fast.
+
+**Pick the path that matches how you deployed.**
+
+**Helm variant (GitOps) — one-step rollback to the previous release:**
+```bash
+# List release history (REVISION column shows each deployed version)
+helm history szl-fleet-overlay -n szl-system
+
+# Roll back one revision (or to a specific REVISION number)
+helm rollback szl-fleet-overlay -n szl-system            # previous good revision
+helm rollback szl-fleet-overlay <REVISION> -n szl-system # explicit revision
+
+# Confirm
+helm status szl-fleet-overlay -n szl-system
+```
+
+**Zarf / UDS variant (air-gap canonical) — redeploy the prior pinned tag:**
+```bash
+# Overlay OCI artifacts are immutable + tagged. Redeploy the previous tag to revert.
+uds deploy oci://ghcr.io/szl-holdings/szl-fleet-overlay:<PREVIOUS_TAG> --confirm
+
+# If you must remove the bad deployment first:
+uds zarf package remove szl-fleet-overlay --confirm
+uds deploy oci://ghcr.io/szl-holdings/szl-fleet-overlay:<PREVIOUS_TAG> --confirm
+```
+
+**Source-level revert (when the repo state itself is wrong):**
+```bash
+# Every release is git-tagged (see .github/workflows/release.yml). Find the last good tag:
+git tag --sort=-creatordate | head
+
+# Revert the working tree to that tag on a hotfix branch (never force-push main):
+git checkout -b hotfix/rollback-<date> <LAST_GOOD_TAG>
+# ...open a PR; CI (k3d Smoke) must go green before merge — never bypass the gate.
+```
+
+**Verify after any rollback:**
+```bash
+make demo-status          # all 5 flagships green + receipt chain depth
+kubectl get packages -A   # Package CRs back to Ready phase
+```
+
+> **Doctrine note:** rollback NEVER bypasses CI. A source-level revert lands through a PR
+> with `k3d Smoke` green, exactly like any other change. Honest red beats fake green.
+
+---
+
 ## 5. Air-Gap Mode
 
 For demos with no internet (e.g., classified environment, conference network):
