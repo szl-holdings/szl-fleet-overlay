@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Build / packaging artifacts
+dist/
+build/
+*.tar.zst
+*.tar.zst.sigstore.json
+zarf-package-*.tar.zst
+/tmp/fleet-pkg/
+
+# SBOM / attestation outputs
+*.sbom.cdx.json
+
+# Local env / secrets — never commit
+.env
+.env.*
+*.key
+*.pem
+cosign.key
+
+# Editor / OS noise
+.DS_Store
+*.swp
+.idea/
+.vscode/
