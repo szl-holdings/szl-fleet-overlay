@@ -50,6 +50,7 @@ The two products run live on Hugging Face — same payload, different runtime:
 | `zarf: permission denied` | Registry auth | `zarf tools registry login ghcr.io` |
 | Pods not starting | Image pull backoff | Check GHCR token; `kubectl describe pod -n szl-<flagship>` |
 | cosign verify fails | Wrong bundle filename | Match exact tag from release assets |
+| Bad version deployed | Need to revert to last known-good | See [Rollback](docs/WARHACKER_DEMO_RUNBOOK.md#49-rollback--revert-the-overlay-to-a-known-good-version) (`helm rollback` / redeploy prior OCI tag / git-tag revert) |
 
 ---
 
