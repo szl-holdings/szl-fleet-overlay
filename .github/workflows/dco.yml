@@ -10,7 +10,8 @@ permissions:
 
 jobs:
   dco:
-    name: Developer Certificate of Origin
+    # Keep this exact job name aligned with the protected-branch context.
+    name: DCO
     runs-on: ubuntu-latest
     steps:
       # No source checkout: a full-history checkout (fetch-depth: 0) issues a
