@@ -1,0 +1,18 @@
+{{- if .Values.apps.defensiveControlPlane.enabled }}
+apiVersion: uds.dev/v1alpha1
+kind: Package
+metadata:
+  name: szl-defensive-control-plane
+  namespace: {{ .Values.apps.defensiveControlPlane.namespace }}
+  annotations:
+    {{- include "szl-fleet.doctrineAnnotations" (dict "global" .Values.global "Chart" .Chart) | nindent 4 }}
+    szl.io/fleet-version: {{ .Chart.Version | quote }}
+    szl.io/source-revision: {{ .Values.apps.defensiveControlPlane.image.sourceRevision | quote }}
+    szl.io/image-digest: {{ .Values.apps.defensiveControlPlane.image.digest | quote }}
+spec:
+  network:
+    allow:
+      - direction: Ingress
+        description: "IntraNamespace pods and health probes"
+        remoteGenerated: IntraNamespace
+{{- end }}

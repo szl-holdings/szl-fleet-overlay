@@ -3,7 +3,7 @@
 #
 # zarf-package-sign.yml — Zarf package build + keyless cosign signing
 #
-# Triggered on push to main or workflow_dispatch. Builds the szl-fleet-overlay
+# Triggered by v0.2.0, whose target must be on protected main history.
 # Zarf package and signs it keyless via GitHub OIDC (Sigstore Fulcio).
 #
 # Keyless signing:
@@ -14,7 +14,7 @@
 # Verification:
 #   cosign verify-blob \
 #     --bundle zarf-package-szl-fleet-overlay-amd64-<version>.tar.zst.cosign.bundle \
-#     --certificate-identity "https://github.com/szl-holdings/szl-fleet-overlay/.github/workflows/zarf-package-sign.yml@refs/heads/main" \
+#     --certificate-identity "https://github.com/szl-holdings/szl-fleet-overlay/.github/workflows/zarf-package-sign.yml@refs/tags/v0.2.0" \
 #     --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
 #     zarf-package-szl-fleet-overlay-amd64-<version>.tar.zst
 #
@@ -27,17 +27,11 @@ name: Zarf Package Build + Sign
 
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
-    inputs:
-      version_override:
-        description: 'Package version override (defaults to chart version)'
-        required: false
-        default: ''
+    tags: [v0.2.0]
 
 permissions:
   id-token: write     # Required for OIDC token exchange with Fulcio (keyless signing)
-  contents: read      # Required for checkout
+  contents: write     # Checkout plus durable GitHub Release assets
   packages: write     # Required to push to ghcr.io
 
 env:
@@ -48,26 +42,55 @@ env:
   ORG: "szl-holdings"
   PACKAGE_NAME: "szl-fleet-overlay"
 
+concurrency:
+  group: zarf-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   package-sign:
     name: Build & Sign Zarf Package
+    if: github.ref == 'refs/tags/v0.2.0'
     runs-on: ubuntu-latest
 
     steps:
       # ── Checkout ─────────────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Require release commit on protected main history
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "${GITHUB_SHA}" origin/main \
+            || { echo "Release tag target is not on origin/main"; exit 1; }
+
+      - name: Require an unpublished release version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            is_draft=$(gh release view "${GITHUB_REF_NAME}" --json isDraft --jq '.isDraft')
+            test "${is_draft}" = "true" \
+              || { echo "Published release ${GITHUB_REF_NAME} already exists; refusing overwrite"; exit 1; }
+            echo "Incomplete draft ${GITHUB_REF_NAME} exists; refusing implicit replacement"
+            exit 1
+          fi
 
       # ── Determine package version ─────────────────────────────────────────
       - name: Determine version
         id: version
         run: |
           set -euo pipefail
-          if [[ -n "${{ github.event.inputs.version_override }}" ]]; then
-            VERSION="${{ github.event.inputs.version_override }}"
-          else
-            VERSION=$(grep '^version:' chart/Chart.yaml | awk '{print $2}')
-          fi
+          CHART_VERSION=$(grep '^version:' chart/Chart.yaml | awk '{print $2}')
+          ZARF_VERSION_DECLARED=$(grep -A6 '^metadata:' zarf.yaml | grep 'version:' | head -1 | awk '{gsub(/"/, "", $2); print $2}')
+          VERSION="${GITHUB_REF_NAME#v}"
+          [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || { echo "Invalid semver: ${VERSION}"; exit 1; }
+          test "${VERSION}" = "${CHART_VERSION}"
+          test "${VERSION}" = "${ZARF_VERSION_DECLARED}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Package version: ${VERSION}"
 
@@ -75,9 +98,11 @@ jobs:
       - name: Install Zarf
         run: |
           set -euo pipefail
-          curl -sLo /usr/local/bin/zarf \
-            https://github.com/zarf-dev/zarf/releases/download/${ZARF_VERSION}/zarf_${ZARF_VERSION}_Linux_amd64
+          URL="https://github.com/zarf-dev/zarf/releases/download/${ZARF_VERSION}/zarf_${ZARF_VERSION}_Linux_amd64"
+          curl -fSL --retry 3 --retry-delay 5 "${URL}" -o /usr/local/bin/zarf
           chmod +x /usr/local/bin/zarf
+          file /usr/local/bin/zarf | grep -q ELF \
+            || { echo "Downloaded Zarf asset is not an ELF executable"; exit 1; }
           zarf version
 
       # ── Install cosign ────────────────────────────────────────────────────
@@ -103,6 +128,47 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Require an unused OCI release reference
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          IMAGE_REF="${REGISTRY}/${ORG}/packages/${PACKAGE_NAME}:${VERSION}-amd64"
+          set +e
+          probe=$(docker manifest inspect "${IMAGE_REF}" 2>&1)
+          probe_status=$?
+          set -e
+
+          if [ "${probe_status}" -eq 0 ]; then
+            echo "OCI release ${IMAGE_REF} already exists; refusing overwrite"
+            exit 1
+          fi
+
+          if printf '%s\n' "${probe}" | grep -Eqi \
+            'manifest unknown|no such manifest|name unknown|repository name not known to registry'; then
+            echo "OCI release reference is explicitly absent: ${IMAGE_REF}"
+            exit 0
+          fi
+
+          printf '%s\n' "${probe}" >&2
+          echo "Could not prove that ${IMAGE_REF} is absent; refusing publication" >&2
+          exit 1
+
+      - name: Verify the Defensive Control Plane release signature
+        env:
+          DCP_IMAGE: ghcr.io/szl-holdings/szl-defensive-control-plane@sha256:01f1fa2d3a4eb3cffb873f7393b64050df77f4383fa9d219163fa0be0bd6dce6
+        run: |
+          set -euo pipefail
+          cosign verify "${DCP_IMAGE}" \
+            --certificate-identity "https://github.com/szl-holdings/szl-defensive-control-plane/.github/workflows/release.yml@refs/tags/v0.4.0" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+      - name: Verify source checksum manifest
+        run: |
+          set -euo pipefail
+          python3 scripts/source_checksums.py check
+          ! grep -q 'PLACEHOLDER' receipts/checksums.txt
+
       # ── Build Zarf package ────────────────────────────────────────────────
       - name: Build Zarf package
         env:
@@ -113,9 +179,10 @@ jobs:
             --confirm \
             --no-progress \
             --output-directory ./dist
-          PKG=$(ls dist/zarf-package-${PACKAGE_NAME}-amd64-*.tar.zst | head -1)
+          PKG=$(find dist -maxdepth 1 -type f -name "zarf-package-${PACKAGE_NAME}-amd64-*.tar.zst" -print -quit)
+          test -n "${PKG}"
           echo "Built: ${PKG}"
-          echo "pkg_file=$(basename ${PKG})" >> "$GITHUB_ENV"
+          echo "pkg_file=$(basename "${PKG}")" >> "$GITHUB_ENV"
 
       # ── Generate SBOM ─────────────────────────────────────────────────────
       - name: Generate SBOM
@@ -124,7 +191,7 @@ jobs:
           SBOM_FILE="dist/${pkg_file%.tar.zst}.sbom.spdx.json"
           syft . -o spdx-json --file "${SBOM_FILE}"
           echo "SBOM: ${SBOM_FILE}"
-          echo "sbom_file=$(basename ${SBOM_FILE})" >> "$GITHUB_ENV"
+          echo "sbom_file=$(basename "${SBOM_FILE}")" >> "$GITHUB_ENV"
 
       # ── Keyless sign package blob ─────────────────────────────────────────
       # cosign sign-blob obtains a short-lived cert from Fulcio via GitHub OIDC.
@@ -146,7 +213,7 @@ jobs:
           echo "Signed: ${PKG}"
           echo "Bundle: ${BUNDLE}"
 
-          CERT_IDENTITY="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/zarf-package-sign.yml@refs/heads/main"
+          CERT_IDENTITY="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/zarf-package-sign.yml@refs/tags/v0.2.0"
           CERT_ISSUER="https://token.actions.githubusercontent.com"
           cat >> "${GITHUB_STEP_SUMMARY}" <<SUMMARY
           ### Signed package
@@ -185,9 +252,28 @@ jobs:
         run: |
           set -euo pipefail
           PKG="dist/${pkg_file}"
+          OCI_REF="oci://${REGISTRY}/${ORG}/packages/${PACKAGE_NAME}:${VERSION}-amd64"
           zarf package publish "${PKG}" "oci://${REGISTRY}/${ORG}/packages" \
             --no-progress
-          echo "Published: oci://${REGISTRY}/${ORG}/packages/${PACKAGE_NAME}-amd64:${VERSION}"
+          echo "Published: ${OCI_REF}"
+
+      - name: Read back and verify the published OCI package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          OCI_REF="oci://${REGISTRY}/${ORG}/packages/${PACKAGE_NAME}:${VERSION}-amd64"
+          mkdir -p readback
+          zarf package pull "${OCI_REF}" --output-directory readback
+          pulled=$(find readback -maxdepth 1 -type f -name "zarf-package-${PACKAGE_NAME}-amd64-${VERSION}.tar.zst" -print -quit)
+          test -n "${pulled}"
+          test "$(find readback -maxdepth 1 -type f -name 'zarf-package-*.tar.zst' | wc -l)" -eq 1
+          test "$(sha256sum "dist/${pkg_file}" | awk '{print $1}')" = "$(sha256sum "${pulled}" | awk '{print $1}')"
+          cosign verify-blob \
+            --bundle "dist/${pkg_file}.cosign.bundle" \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/zarf-package-sign.yml@refs/tags/v0.2.0" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${pulled}"
 
       # ── Upload artifacts ──────────────────────────────────────────────────
       - name: Upload signed artifacts
@@ -200,3 +286,39 @@ jobs:
             dist/zarf-package-*.cosign.bundle
             dist/zarf-package-*.sbom.bundle
             dist/*.sbom.spdx.json
+
+      - name: Publish durable release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            --verify-tag \
+            --draft \
+            --title "SZL Fleet Overlay ${GITHUB_REF_NAME}" \
+            --notes "Signed Zarf package, verification bundle, and SBOM attestation for ${GITHUB_SHA}."
+          gh release upload "${GITHUB_REF_NAME}" \
+            "dist/${pkg_file}" \
+            "dist/${pkg_file}.cosign.bundle" \
+            "dist/${pkg_file}.sbom.bundle" \
+            "dist/${sbom_file}"
+          expected_assets=$(printf '%s\n' \
+            "${pkg_file}" \
+            "${pkg_file}.cosign.bundle" \
+            "${pkg_file}.sbom.bundle" \
+            "${sbom_file}" | sort)
+          actual_assets=$(gh release view "${GITHUB_REF_NAME}" --json assets \
+            --jq '.assets[].name' | sort)
+          test "${actual_assets}" = "${expected_assets}"
+          mkdir -p release-readback
+          gh release download "${GITHUB_REF_NAME}" --dir release-readback
+          test "$(find release-readback -maxdepth 1 -type f | wc -l)" -eq 4
+          for asset in \
+            "${pkg_file}" \
+            "${pkg_file}.cosign.bundle" \
+            "${pkg_file}.sbom.bundle" \
+            "${sbom_file}"; do
+            test "$(sha256sum "dist/${asset}" | awk '{print $1}')" = \
+              "$(sha256sum "release-readback/${asset}" | awk '{print $1}')"
+          done
+          gh release edit "${GITHUB_REF_NAME}" --draft=false

@@ -21,6 +21,10 @@ on:
       - 'configs/**'
       - 'chart/**'
       - 'scripts/**'
+      - 'receipts/**'
+      - 'configs/workloads/**'
+      - 'uds-packages/**'
+      - 'uds-bundle.yaml'
       - 'Makefile'
       - 'tasks.yaml'
       - 'zarf.yaml'
@@ -33,7 +37,6 @@ on:
 permissions:
   contents: read
   packages: read          # GHCR image pull
-  id-token: write         # OIDC for SLSA L1 provenance (non-publishing)
 
 concurrency:
   group: k3d-smoke-${{ github.ref }}
@@ -77,12 +80,15 @@ jobs:
             zarf.yaml \
             scripts/preflight.sh \
             scripts/seed-receipts.py \
+            scripts/source_checksums.py \
             configs/namespaces.yaml \
             configs/packages/package-a11oy.yaml \
             configs/packages/package-sentra.yaml \
             configs/packages/package-amaru.yaml \
             configs/packages/package-rosie.yaml \
             configs/packages/package-killinchu.yaml \
+            configs/packages/package-defensive-control-plane.yaml \
+            configs/workloads/defensive-control-plane.yaml \
             receipts/doctrine-pin.yaml; do
             if [ -f "$f" ]; then
               echo "  ✅  $f"
@@ -147,6 +153,26 @@ jobs:
           print("✅  doctrine-pin.yaml invariants OK")
           EOF
 
+      - name: Verify immutable Defensive Control Plane image
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          import yaml
+          from pathlib import Path
+
+          docs = list(yaml.safe_load_all(
+              Path("configs/workloads/defensive-control-plane.yaml").read_text(encoding="utf-8")
+          ))
+          deployments = [doc for doc in docs if doc and doc.get("kind") == "Deployment"]
+          assert len(deployments) == 1
+          image = deployments[0]["spec"]["template"]["spec"]["containers"][0]["image"]
+          assert re.fullmatch(
+              r"ghcr\.io/szl-holdings/szl-defensive-control-plane@sha256:[0-9a-f]{64}", image
+          ), image
+          print(image)
+          PY
+
   # ───────────────────────────────────────────────────────────────────────────
   # Job 2: k3d-smoke — full cluster smoke test
   # ───────────────────────────────────────────────────────────────────────────
@@ -201,6 +227,63 @@ jobs:
         env:
           UDS_VERSION: ${{ env.UDS_VERSION }}
 
+      - name: Log in to GHCR for the private DCP image
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Pull and self-smoke the exact DCP image
+        env:
+          DCP_IMAGE: ghcr.io/szl-holdings/szl-defensive-control-plane@sha256:01f1fa2d3a4eb3cffb873f7393b64050df77f4383fa9d219163fa0be0bd6dce6
+        run: |
+          set -euo pipefail
+          docker pull "${DCP_IMAGE}"
+          EVENT_KEY=$(openssl rand -hex 32)
+          EVIDENCE_KEY=$(openssl rand -hex 32)
+          container=$(docker run -d --rm \
+            --name "dcp-ci-smoke-${GITHUB_RUN_ID}" \
+            --network none \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m \
+            -e DCP_EVENT_ROOT_KEY_HEX="${EVENT_KEY}" \
+            -e DCP_EVIDENCE_KEY_HEX="${EVIDENCE_KEY}" \
+            -e DCP_TRUSTED_HOSTS=localhost \
+            "${DCP_IMAGE}" \
+            serve --db /tmp/control-plane.sqlite3 --mode cluster-readonly \
+            --host 0.0.0.0 --port 8080)
+          unset EVENT_KEY EVIDENCE_KEY
+          trap 'docker rm -f "${container}" >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 30); do
+            if docker exec -i "${container}" python - <<'PY'
+          import json
+          import urllib.request
+
+          for path in ("/livez", "/readyz", "/api/build-info", "/api/lanes"):
+              request = urllib.request.Request("http://127.0.0.1:8080" + path, headers={"Host": "localhost"})
+              with urllib.request.urlopen(request, timeout=2) as response:
+                  assert response.status == 200
+                  payload = json.load(response)
+                  if path == "/readyz":
+                      assert payload["productionReady"] is False
+                      assert payload["externalConnectors"] == "UNAVAILABLE"
+                  if path == "/api/build-info":
+                      assert payload["version"] == "0.4.0"
+                      assert payload["sourceRevision"] == "cbb7bddf0b584987830617e68725e36e9ed27434"
+                      assert payload["deploymentVerified"] is False
+                  if path == "/api/lanes":
+                      assert payload["productionOperational"] is False
+          PY
+            then
+              break
+            fi
+            test "${attempt}" -lt 30
+            sleep 1
+          done
+          docker rm -f "${container}" >/dev/null
+          trap - EXIT
+
       # ─── Cluster-independent deploy-SHAPE proof ──────────────────────────────
       # This ALWAYS runs (no cluster needed) so the gate proves something real
       # even when the heavy UDS Core deploy can't spin up on the hosted runner.
@@ -249,6 +332,7 @@ jobs:
           KUBECONFIG: ${{ env.KUBECONFIG }}
 
       - name: Deploy UDS Core (slim — base+identity)
+        id: uds-core
         if: steps.zarf-init.outcome == 'success'
         run: |
           uds deploy \
@@ -260,9 +344,9 @@ jobs:
         continue-on-error: true   # UDS Core may be slow; record result, don't abort
 
       - name: Note (in-cluster path environment-limited — skip live smoke)
-        if: steps.create-cluster.outcome != 'success' || steps.zarf-init.outcome != 'success'
+        if: steps.create-cluster.outcome != 'success' || steps.zarf-init.outcome != 'success' || steps.uds-core.outcome != 'success'
         run: |
-          echo "::notice title=in-cluster smoke skipped::The k3d cluster or zarf-init seed-registry"
+          echo "::notice title=in-cluster smoke skipped::The k3d cluster, Zarf seed registry, or UDS Core"
           echo "::notice::could not stabilize within this hosted runner's time/RAM budget (the"
           echo "::notice::seed-registry chart commonly exceeds GitHub-runner limits). This does NOT"
           echo "::notice::indicate a fleet defect: the GATING 'Deploy-shape proof' above already built"
@@ -270,7 +354,7 @@ jobs:
           echo "::notice::the founder's tower per docs/WARHACKER_DEMO_RUNBOOK.md (RTX tower, 32 GB)."
 
       - name: Apply SZL namespaces
-        if: steps.zarf-init.outcome == 'success'
+        if: steps.uds-core.outcome == 'success'
         run: |
           kubectl apply -f configs/namespaces.yaml
           kubectl get ns | grep szl
@@ -278,42 +362,34 @@ jobs:
           KUBECONFIG: ${{ env.KUBECONFIG }}
 
       - name: Apply Package CRs
-        if: steps.zarf-init.outcome == 'success'
+        if: steps.uds-core.outcome == 'success'
         run: |
-          for app in a11oy sentra amaru rosie killinchu; do
-            kubectl apply -f configs/packages/package-$${app}.yaml \
-              -n szl-$${app} 2>/dev/null || \
-            kubectl apply -f configs/packages/package-$${app}.yaml || true
+          for app in a11oy sentra amaru rosie killinchu defensive-control-plane; do
+            kubectl apply -f configs/packages/package-${app}.yaml \
+              -n szl-${app}
           done
           kubectl get packages -A 2>/dev/null || echo "UDS Package CRD not yet installed (UDS Core slim may skip)"
         env:
           KUBECONFIG: ${{ env.KUBECONFIG }}
 
       - name: Apply peat mesh nodes
-        if: steps.zarf-init.outcome == 'success'
+        if: steps.uds-core.outcome == 'success'
         run: |
           kubectl apply -f configs/peat/ 2>/dev/null || echo "peat CRD not yet installed"
         env:
           KUBECONFIG: ${{ env.KUBECONFIG }}
 
-      # Receipt seeding + chain validation need NO cluster (pure Python on local
-      # files), so they run ALWAYS as part of the gating deploy-shape proof.
-      - name: Run seed-receipts.py
-        run: |
-          python3 scripts/seed-receipts.py
-          echo "=== Receipt chain head ==="
-          tail -1 receipts/demo-receipts.jsonl | python3 -c \
-            "import json,sys; r=json.load(sys.stdin); print(f\"  Hash: {r['receipt_hash']}\")"
-
-      - name: Validate doctrine receipts
+      # Validate the committed fixture before any generator execution so CI
+      # cannot hide drift by overwriting the artifact under test.
+      - name: Validate committed modeled receipt chain
         run: |
           python3 - <<'EOF'
-          import json, sys
+          import hashlib, json, sys
           with open("receipts/demo-receipts.jsonl") as f:
               receipts = [json.loads(l) for l in f]
-          assert len(receipts) == 20, f"Expected 20 receipts, got {len(receipts)}"
+          assert len(receipts) == 24, f"Expected 24 receipts, got {len(receipts)}"
           flagships = {r["flagship"] for r in receipts}
-          assert flagships == {"a11oy","sentra","amaru","rosie","killinchu"}, \
+          assert flagships == {"a11oy","sentra","amaru","rosie","killinchu","defensive-control-plane"}, \
               f"Missing flagships: {flagships}"
           # Verify chain integrity
           prev = "0"*64
@@ -321,19 +397,41 @@ jobs:
               if r["prev_hash"] != prev:
                   print(f"⛔  Chain broken at seq={r['seq']}")
                   sys.exit(1)
+              assert r["payload"]["prev_hash"] == r["prev_hash"], r["seq"]
+              actual = hashlib.sha3_256(
+                  json.dumps(r["payload"], sort_keys=True).encode()
+              ).hexdigest()
+              assert actual == r["receipt_hash"], r["seq"]
               prev = r["receipt_hash"]
           # Verify doctrine pin in each receipt
           for r in receipts:
               d = r.get("doctrine", {})
               assert d.get("version") == "v11", f"Doctrine version wrong: {d}"
               assert d.get("lambda_status") == "Conjecture 1", f"Lambda wrong: {d}"
+              assert r.get("evidence_state") == "MODELED", r
+              assert r.get("scope") == "synthetic-demo", r
+              assert r.get("production_operational") is False, r
           print(f"✅  {len(receipts)} receipts, chain intact, doctrine correct")
           EOF
 
-      - name: Validate Package CR namespaces exist
-        if: steps.zarf-init.outcome == 'success'
+      - name: Exercise receipt generator without changing committed artifacts
         run: |
-          for ns in szl-a11oy szl-sentra szl-amaru szl-rosie szl-killinchu; do
+          set -euo pipefail
+          before_json=$(sha256sum receipts/demo-receipts.jsonl | awk '{print $1}')
+          before_summary=$(sha256sum receipts/demo-receipts-summary.md | awk '{print $1}')
+          python3 scripts/seed-receipts.py
+          test "$(wc -l < receipts/demo-receipts.jsonl)" -eq 24
+          git diff --exit-code -- scripts/seed-receipts.py
+          # The timestamped modeled fixture is intentionally non-reproducible;
+          # restore it so later steps inspect the committed artifact.
+          git restore --source=HEAD -- receipts/demo-receipts.jsonl receipts/demo-receipts-summary.md
+          test "$(sha256sum receipts/demo-receipts.jsonl | awk '{print $1}')" = "${before_json}"
+          test "$(sha256sum receipts/demo-receipts-summary.md | awk '{print $1}')" = "${before_summary}"
+
+      - name: Validate Package CR namespaces exist
+        if: steps.uds-core.outcome == 'success'
+        run: |
+          for ns in szl-a11oy szl-sentra szl-amaru szl-rosie szl-killinchu szl-defensive-control-plane; do
             phase=$(kubectl get ns $ns -o jsonpath='{.status.phase}' 2>/dev/null || echo "Missing")
             if [ "$phase" = "Active" ]; then
               echo "  ✅  $ns Active"
@@ -351,7 +449,7 @@ jobs:
           PASS=0; FAIL=0
           for app in a11oy sentra amaru rosie killinchu; do
             code=$(curl -sf --max-time 10 \
-              https://szlholdings-$${app}.hf.space/api/health \
+              https://szlholdings-${app}.hf.space/api/health \
               -o /dev/null -w "%{http_code}" 2>/dev/null || echo "ERR")
             if [ "$code" = "200" ]; then
               echo "  ✅  $app.hf.space = $code"
@@ -398,8 +496,8 @@ jobs:
 
       - name: Lint YAML files
         run: |
-          yamllint -d '{extends: relaxed, rules: {line-length: {max: 120}}}' \
-            configs/ receipts/ zarf.yaml tasks.yaml
+          yamllint -d '{extends: relaxed, rules: {line-length: {max: 200}}}' \
+            configs/ uds-packages/ receipts/ zarf.yaml uds-bundle.yaml tasks.yaml
 
       - name: Helm template dry-run
         run: |

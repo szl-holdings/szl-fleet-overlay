@@ -4,8 +4,8 @@
 # NO Iron Bank / FedRAMP / CMMC / SWFT / Mission Owner
 #
 # Usage:
-#   make demo-up         spin up k3d cluster + uds-core + 5 flagships + szl-mesh
-#   make demo-status     report all 5 flagships' status + receipt chain
+#   make demo-up         spin up the legacy five-flagship demo + szl-mesh
+#   make demo-status     report those five flagships + the modeled receipt chain
 #   make demo-receipts   show the latest 10 receipts across the chain
 #   make demo-tear-down  nuke the cluster cleanly
 #
@@ -51,7 +51,7 @@ help: ## Print this help
 
 ##@ Demo Lifecycle
 
-demo-up: ## [DEMO] Spin up k3d + UDS Core + 5 flagships + szl-mesh (≈ 10-20 min)
+demo-up: ## [DEMO] Spin up the legacy five-flagship demo; DCP uses the Zarf tasks
 	@echo -e "$(YELLOW)=== SZL Demo Cluster — demo-up ===$(NC)"
 	@$(MAKE) preflight
 	@$(MAKE) cluster-create
@@ -100,11 +100,7 @@ demo-status: ## [DEMO] Report all 5 flagships' status + receipt chain depth
 	@echo "Receipt chain:"
 	@if [ -f receipts/checksums.txt ]; then \
 	  echo "  Checksums: $$(wc -l < receipts/checksums.txt) files"; \
-	  if [ -f receipts/checksums.txt.sig ]; then \
-	    echo "  Signature: receipts/checksums.txt.sig present"; \
-	  else \
-	    echo -e "  $(YELLOW)⚠️   No signature file (run: make sign-receipts)$(NC)"; \
-	  fi; \
+	  echo "  Inner signature: not packaged; verify the outer Zarf cosign bundle"; \
 	else \
 	  echo -e "  $(YELLOW)⚠️   No receipt checksums found$(NC)"; \
 	fi
@@ -237,27 +233,16 @@ szl-mesh-deploy: ## Deploy peat mesh node configs
 	  kubectl apply -f configs/peat/
 	@echo -e "  $(GREEN)✅  peat mesh nodes applied$(NC)"
 
-seed-receipts: ## Generate 20 demo receipts across 5 flagships
+seed-receipts: ## Generate 24 explicitly MODELED receipts across six surfaces
 	@echo -e "$(YELLOW)--- seed-receipts ---$(NC)"
 	@python3 scripts/seed-receipts.py
 	@echo -e "  $(GREEN)✅  receipts seeded$(NC)"
 
 ##@ Build and Sign
 
-sign-receipts: ## Generate and cosign-sign doctrine receipt checksums
+sign-receipts: ## Generate and verify source checksums; release signing occurs in CI
 	@echo -e "$(YELLOW)--- sign-receipts ---$(NC)"
-	@mkdir -p receipts
-	@find configs/ receipts/doctrine-pin.yaml -type f 2>/dev/null | sort | xargs sha256sum > receipts/checksums.txt
-	@if [ -n "$${COSIGN_KEY_PATH}" ]; then \
-	  cosign sign-blob \
-	    --key "$${COSIGN_KEY_PATH}" \
-	    --output-signature receipts/checksums.txt.sig \
-	    receipts/checksums.txt && \
-	  echo -e "  $(GREEN)✅  checksums.txt.sig written$(NC)"; \
-	else \
-	  echo -e "  $(YELLOW)⚠️   COSIGN_KEY_PATH not set — skipping signature$(NC)"; \
-	  echo "  WARN: signature is PLACEHOLDER" > receipts/checksums.txt.sig; \
-	fi
+	@uds run sign-receipts
 
 build: ## Build the Zarf package
 	@echo -e "$(YELLOW)--- zarf package create ---$(NC)"

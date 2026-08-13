@@ -4,36 +4,44 @@
 
 **Doctrine v11 LOCKED 749/14/163** · Λ = Conjecture 1 · SLSA L1+L2 honest (NOT L3) · Kernel `c7c0ba17`
 
-UDS Operator packages + Helm chart + Zarf bundle + peat-mesh nodes for the 5 SZL service surfaces.
+UDS Operator packages, Helm chart, and Zarf bundle for five SZL flagship surfaces plus the Defensive Control Plane.
 
 > **Trademark / non-affiliation notice.** SZL Holdings' use of "UDS" references Defense Unicorns' Unified Defense Stack (USPTO Serial 99831122). SZL Holdings is **not affiliated with Defense Unicorns**. SZL contributions to the UDS ecosystem are made through upstream PRs. Upstream **UDS Core** (AGPL-3.0) is used as a **deployment pattern / dependency only — it is not vendored or adopted into this repository**. See https://defenseunicorns.com/uds
 
-Layers doctrine-pinned DSSE receipts on top of UDS Fleet.
+Layers doctrine-pinned, hash-chained modeled receipt fixtures on top of UDS Fleet. The post-merge release workflow separately emits the signed Zarf artifact and DSSE SBOM attestation.
 
 **Deployment story:** this overlay is the UDS Operator entry point. Bundle manifests live in [uds-bundles](https://github.com/szl-holdings/uds-bundles); air-gap deploy procedures in [szl-uds-deployment](https://github.com/szl-holdings/szl-uds-deployment); the CRDT coordination layer is [szl-mesh](https://github.com/szl-holdings/szl-mesh).
 
 ## Prerequisites
 
-- [Zarf](https://docs.zarf.dev/getting-started/install/) v0.38+
-- [UDS CLI](https://uds.defenseunicorns.com/docs/getting-started/) v0.14+  
+- [Zarf](https://docs.zarf.dev/getting-started/install/) v0.77+
+- [UDS CLI](https://uds.defenseunicorns.com/docs/getting-started/) v0.32+
 - [cosign](https://docs.sigstore.dev/cosign/installation/) v2.2+ (for signature verification)
 - A running UDS Core cluster (K3d for development: `uds deploy k3d-core`)
 
-## Quickstart — Deploy the Full Fleet Overlay
+## Quickstart — Register the Fleet and Deploy DCP
 
 ```bash
-# Pull and deploy the overlay (bundles all 5 SZL service surfaces)
-zarf package pull oci://ghcr.io/szl-holdings/szl-fleet-overlay:0.1.0
+# Pull the v0.2.0 overlay (register five pre-existing flagships; deploy DCP)
+zarf package pull oci://ghcr.io/szl-holdings/packages/szl-fleet-overlay:0.2.0-amd64
+
+# Download the durable verification bundle from the matching GitHub release
+gh release download v0.2.0 --repo szl-holdings/szl-fleet-overlay \
+  --pattern 'zarf-package-szl-fleet-overlay-amd64-0.2.0.tar.zst.cosign.bundle'
 
 # Verify before deploying
 cosign verify-blob \
-  --certificate-identity-regexp "https://github.com/szl-holdings/szl-fleet-overlay/.github/workflows/.*" \
+  --certificate-identity "https://github.com/szl-holdings/szl-fleet-overlay/.github/workflows/zarf-package-sign.yml@refs/tags/v0.2.0" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --bundle zarf-package-szl-fleet-overlay-amd64-0.1.0.tar.zst.sigstore.json \
-  zarf-package-szl-fleet-overlay-amd64-0.1.0.tar.zst
+  --bundle zarf-package-szl-fleet-overlay-amd64-0.2.0.tar.zst.cosign.bundle \
+  zarf-package-szl-fleet-overlay-amd64-0.2.0.tar.zst
 
-uds deploy oci://ghcr.io/szl-holdings/szl-fleet-overlay:0.1.0
+uds zarf package deploy zarf-package-szl-fleet-overlay-amd64-0.2.0.tar.zst --confirm
 ```
+
+Before deployment, apply `configs/namespaces.yaml` and create `szl-defensive-control-plane-signing-keys` in `szl-defensive-control-plane` with two different 64-character lowercase hexadecimal values named `event-root-key-hex` and `evidence-key-hex`. Generate them independently through the cluster secret manager; never commit them. Zarf vendors the private DCP image into its seed registry. For direct Helm installs, set `apps.defensiveControlPlane.imagePullSecretName` to an existing `kubernetes.io/dockerconfigjson` Secret.
+
+The DCP Service is cluster-only and default-deny. This release creates no public gateway, ingress, OIDC claim, provider connector, event-ingestion API, approval API, or execution API. Its status routes are `/livez`, `/readyz`, `/api/build-info`, `/api/lanes`, and `/api/v1/lanes`; they continue to report external connectors unavailable and production operation false.
 
 ## Runtime demonstration
 
@@ -63,7 +71,7 @@ The two products run live on Hugging Face — same payload, different runtime:
 It provides:
 
 1. **UDS `Package` CRs** for each application — Istio routing, NetworkPolicy, SSO (Keycloak), and portal tiles
-2. **Doctrine-pinned receipts** (`checksums.txt` + cosign detached signatures) for SLSA L1 honest attestation
+2. **Doctrine-pinned evidence**: deterministic source checksums and modeled hash-chain fixtures; the `v0.2.0` tag workflow requires its target on protected main history, then produces the outer cosign bundle and DSSE SBOM attestation
 3. **Three deployment variants**: pure Zarf (air-gap canonical), Helm chart (GitOps), peat-mesh-node (CRDT sync)
 
 All variants share the same `Package` CR definitions in `configs/packages/` but differ in how application workloads are delivered.
@@ -81,8 +89,9 @@ See [`SZL_FLEET_OVERLAY_DESIGN.md`](https://github.com/szl-holdings/szl-fleet-ov
 | a11oy — memory          | `szl-amaru`   | 8080 | `uds-szl-amaru`     | Yes       |
 | a11oy — operator        | `szl-rosie`   | 8080 | `uds-szl-rosie`     | Yes       |
 | killinchu               | `szl-killinchu`| 8080 | `uds-szl-killinchu` | Yes       |
+| defensive control plane | `szl-defensive-control-plane` | 8080 | None | No |
 
-All applications are served over the UDS **tenant** gateway. SSO group gate: `/szl-operators`.
+The five flagship surfaces use the UDS tenant gateway and `/szl-operators` SSO gate. The Defensive Control Plane remains cluster-only, has no SSO claim, and is pinned to source `cbb7bddf0b584987830617e68725e36e9ed27434` and image digest `sha256:01f1fa2d3a4eb3cffb873f7393b64050df77f4383fa9d219163fa0be0bd6dce6`.
 
 ---
 
@@ -97,19 +106,22 @@ Produces a self-contained `.tar.zst` requiring only `zarf init` and `zarf packag
 uds zarf package create . -a amd64 --confirm
 
 # Deploy
-uds zarf package deploy zarf-package-szl-fleet-overlay-amd64-0.1.0.tar.zst --confirm
+uds zarf package deploy zarf-package-szl-fleet-overlay-amd64-0.2.0.tar.zst --confirm
 ```
 
-Use `tasks.yaml` (Maru) for the full build/sign/publish workflow:
+Use `tasks.yaml` (Maru) for local build and verification. Canonical publication is tag-workflow-only:
 
 ```bash
 uds run build
 uds run sign-receipts
-uds run publish
 uds run validate
 ```
 
 ### Variant 2 — Helm Chart (GitOps / ArgoCD / Flux)
+
+Helm does not create the target application namespaces or any Secret values. Apply `configs/namespaces.yaml`, provision the two DCP signing keys, and—when pulling directly from private GHCR—precreate a registry Secret and set `apps.defensiveControlPlane.imagePullSecretName` before running the commands below. `--create-namespace` creates only `szl-system`.
+
+The DCP PVC carries `helm.sh/resource-policy: keep`; ordinary Helm uninstall and `uds run clean` preserve its SQLite evidence. Zarf removal is not claimed to preserve evidence. Destructive evidence removal is a separate, explicit operator action after an off-cluster backup and is intentionally not automated here.
 
 ```bash
 # Install with prod values
@@ -140,11 +152,12 @@ Phase                     Command
 ─────────────────────────────────────────────────────────────────
 1. Zarf init (once)       uds zarf init --confirm
 2. Deploy uds-core        uds deploy oci://ghcr.io/defenseunicorns/packages/uds/core:1.5.0-upstream
-3. Deploy fleet overlay   uds deploy oci://ghcr.io/szl-holdings/fleet-overlay:0.1.0 --confirm
+3. Pull fleet package     zarf package pull oci://ghcr.io/szl-holdings/packages/szl-fleet-overlay:0.2.0-amd64
+   Deploy fleet package   uds zarf package deploy zarf-package-szl-fleet-overlay-amd64-0.2.0.tar.zst --confirm
    (or Helm variant)      helm upgrade --install szl-fleet-overlay ./chart -n szl-system --create-namespace \
                             -f chart/values/prod.yaml
 4. Verify portal tiles    curl -sk https://portal.uds.dev/api/packages | jq '.[] | select(.name | startswith("szl"))'
-5. Verify receipts        cosign verify-blob --key cosign.pub --signature receipts/checksums.txt.sig receipts/checksums.txt
+5. Verify source hashes   python3 scripts/source_checksums.py check
 ```
 
 ---
@@ -166,18 +179,16 @@ szl-fleet-overlay/
 │   │   └── prod.yaml
 │   └── templates/
 │       ├── _helpers.tpl
-│       ├── package-{app}.yaml         # One per service surface (5 total)
-│       └── namespace-{app}.yaml       # (rendered by _helpers.tpl)
+│       ├── package-{app}.yaml         # Six UDS Package CR templates
+│       └── workload-defensive-control-plane.yaml
 │
 ├── configs/
-│   ├── packages/                      # Package CR YAMLs (all variants)
-│   │   └── package-{app}.yaml         # One per service surface
-│   └── peat/                          # Peat mesh node configs
-│       └── peat-node-{app}.yaml       # One per service surface
+│   ├── packages/                      # Six Package CR YAMLs
+│   ├── workloads/                     # DCP PVC, Deployment, Service, policy
+│   └── peat/                          # Five legacy Peat mesh node configs
 │
 └── receipts/                          # Doctrine-pinned receipts
-    ├── checksums.txt                  # SHA256 of every config file
-    ├── checksums.txt.sig              # cosign detached signature
+    ├── checksums.txt                  # deterministic source checksum manifest
     └── doctrine-pin.yaml             # Doctrine version lock record
 ```
 
@@ -242,6 +253,7 @@ no Keycloak SSO client, no ServiceMonitor.
 | `uds-packages/amaru.yaml` | a11oy — memory | `szl-amaru` |
 | `uds-packages/rosie.yaml` | a11oy — operator | `szl-rosie` |
 | `uds-packages/killinchu.yaml` | killinchu | `szl-killinchu` |
+| `uds-packages/defensive-control-plane.yaml` | defensive control plane | `szl-defensive-control-plane` |
 
 ### Apply stand-alone Package CRs
 
@@ -268,5 +280,3 @@ Each Package CR configures:
 These are rendered from the Helm chart `_helpers.tpl` `szl-fleet.package` template when
 deploying via the Helm variant, and applied directly via the Zarf `szl-<flagship>-package`
 component.
-
-

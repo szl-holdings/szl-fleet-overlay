@@ -55,3 +55,7 @@ apps:
     clientId: uds-szl-killinchu
     displayName: "SZL Killinchu (dev)"
     peatEnabled: false
+
+  defensiveControlPlane:
+    enabled: true
+    displayName: "SZL Defensive Control Plane (dev)"

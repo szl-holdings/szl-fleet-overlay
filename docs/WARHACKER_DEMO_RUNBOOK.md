@@ -133,7 +133,7 @@ This single command runs the full sequence:
 | `uds-core-deploy` | Deploys UDS Core (Istio, Keycloak, MetalLB) | 5–8 min |
 | `flagships-deploy` | Applies 5 Package CRs + Deployments | 2–3 min |
 | `szl-mesh-deploy` | Applies peat mesh node configs | < 30 sec |
-| `seed-receipts` | Generates 20 demo receipts | < 5 sec |
+| `seed-receipts` | Generates 24 modeled receipts across six surfaces | < 5 sec |
 | **Total** | | **~10–20 min** |
 
 ### Step 4 — Confirm all 5 flagships are green
@@ -164,9 +164,10 @@ Live HF Space health (internet fallback):
   ✅  rosie.hf.space    HTTP 200
   ✅  killinchu.hf.space HTTP 200
 
-Receipt chain:
-  Checksums: 8 files
-  Signature: receipts/checksums.txt.sig present
+Evidence fixtures:
+  Source checksums: 37 canonical inputs, verification PASS
+  Modeled receipts: 24 across 6 surfaces, chain-linked
+  Inner signature: none (outer release signature is a separate tag-workflow artifact)
 
 Doctrine pin:
   v11 LOCKED 749/14/163 @ c7c0ba17 · Λ = Conjecture 1 · SLSA L1
@@ -295,7 +296,7 @@ curl -s https://szlholdings-amaru.hf.space/api/health | python3 -m json.tool
 make demo-receipts
 ```
 
-> "20 receipts across 5 flagships, chained. This is the air-gap-compatible proof-of-governance that the DoD Agentic AI guidance requires."
+> "24 modeled receipts across six governed surfaces, chain-linked and explicitly non-production. They demonstrate the evidence shape; they do not claim provider execution or a deployed runtime."
 
 ---
 
@@ -437,14 +438,19 @@ make demo-up
 
 ---
 
-### 4.8 DSSE Signatures are PLACEHOLDER
+### 4.8 Modeled receipts are not release signatures
 
-**Context:** The `receipts/checksums.txt.sig` is a PLACEHOLDER when `COSIGN_KEY_PATH` is not set. This is documented in `HONEST_DISCLOSURE.md` and `DSSE_FIX_PLAN.md`.
+**Context:** The repository intentionally ships no inner receipt signature file.
+The checked-in receipt fixtures are hash-chained, unkeyed models labeled `MODELED`,
+`synthetic-demo`, and `productionOperational: false`.
 
-**What it means for the demo:** The receipt chain structure is correct and chain-linked. The cryptographic signature is not verifiable against Rekor/Sigstore without the key.
+**What it means for the demo:** The fixtures demonstrate ordering and evidence shape,
+not provider execution, production operation, DSSE, or a runtime witness. The protected
+`v0.2.0` tag workflow separately creates the keyless cosign bundle for the Zarf package
+and a DSSE SBOM attestation, then publishes those durable assets with the GitHub Release.
 
 **Honest disclosure to evaluators (use this verbatim):**
-> "The receipt envelope structure is correct DSSE. The signature value is a PLACEHOLDER — inject the ECDSA-P256 key and it will produce verifiable Sigstore attestations. DSSE_FIX_PLAN.md has the exact implementation path."
+> "These 24 receipts are explicitly modeled, chain-linked demo fixtures across six surfaces. The release artifact and SBOM are signed separately by the `v0.2.0` tag workflow after it proves the target is on protected main history; neither fixture data nor CI success is a production-runtime claim."
 
 ---
 
@@ -469,14 +475,21 @@ helm rollback szl-fleet-overlay <REVISION> -n szl-system # explicit revision
 helm status szl-fleet-overlay -n szl-system
 ```
 
-**Zarf / UDS variant (air-gap canonical) — redeploy the prior pinned tag:**
+**Zarf / UDS variant (air-gap canonical) — deploy a prior verified package:**
 ```bash
-# Overlay OCI artifacts are immutable + tagged. Redeploy the previous tag to revert.
-uds deploy oci://ghcr.io/szl-holdings/szl-fleet-overlay:<PREVIOUS_TAG> --confirm
-
-# If you must remove the bad deployment first:
-uds zarf package remove szl-fleet-overlay --confirm
-uds deploy oci://ghcr.io/szl-holdings/szl-fleet-overlay:<PREVIOUS_TAG> --confirm
+# Pull the immutable prior version, download its matching release bundle, verify it,
+# then deploy the local file. Do not use Zarf removal as an evidence-preserving rollback.
+zarf package pull \
+  oci://ghcr.io/szl-holdings/packages/szl-fleet-overlay:<PREVIOUS_VERSION>-amd64
+gh release download "v<PREVIOUS_VERSION>" --repo szl-holdings/szl-fleet-overlay \
+  --pattern 'zarf-package-*.cosign.bundle'
+cosign verify-blob \
+  --bundle "zarf-package-szl-fleet-overlay-amd64-<PREVIOUS_VERSION>.tar.zst.cosign.bundle" \
+  --certificate-identity "https://github.com/szl-holdings/szl-fleet-overlay/.github/workflows/zarf-package-sign.yml@refs/tags/v<PREVIOUS_VERSION>" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  "zarf-package-szl-fleet-overlay-amd64-<PREVIOUS_VERSION>.tar.zst"
+uds zarf package deploy \
+  "zarf-package-szl-fleet-overlay-amd64-<PREVIOUS_VERSION>.tar.zst" --confirm
 ```
 
 **Source-level revert (when the repo state itself is wrong):**
@@ -552,7 +565,7 @@ The following items **must be disclosed proactively** at the demo. This is not w
 | Item | Honest Statement |
 |------|-----------------|
 | Λ is Conjecture 1 | "Λ is Conjecture 1, not a proven theorem. We have 163 open sorries. The completion path is ~70 lines of Lean. We will NOT claim machine-verification until Lean CI is green." |
-| DSSE signatures | "DSSE signatures are PLACEHOLDER when cosign key is not injected. Envelope structure is correct. Key injection is the remaining step per DSSE_FIX_PLAN.md." |
+| Receipt and release signatures | "The 24 receipt records are modeled, unkeyed demo fixtures—not DSSE. The `v0.2.0` tag workflow requires its target on protected main history, then emits the keyless package bundle and DSSE SBOM attestation; deployed runtime remains a separate proof gate." |
 | SLSA level | "SLSA L1 honest. NOT higher levels (higher levels not yet achieved — deferred)." |
 | Section 889 | "5 vendors explicitly excluded: Huawei, ZTE, Hytera, Hikvision, Dahua. Exact count — no vague statements." |
 | No Iron Bank | "We make zero Iron Bank claims. No FedRAMP ATO. CMMC self-assessment only (not C3PAO certified)." |

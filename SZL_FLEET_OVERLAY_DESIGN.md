@@ -4,10 +4,10 @@
 
 ## 1. Purpose
 
-`szl-fleet-overlay` is a UDS-managed package that **registers each SZL flagship application** (a11oy, sentra, amaru, rosie, killinchu) as a first-class UDS-managed application. It provides:
+`szl-fleet-overlay` is a UDS-managed package that **registers each SZL flagship application** (a11oy, sentra, amaru, rosie, killinchu) as a first-class UDS-managed application and deploys the cluster-only Defensive Control Plane workload. It provides:
 
 1. `Package` CRs for each flagship → Istio routing, NetworkPolicy, SSO, portal tiles
-2. Doctrine-pinned receipts (`checksums.txt` + cosign signatures) for SLSA L1 attestation
+2. A canonical source-checksum manifest plus explicitly modeled, hash-chained demo receipts; the protected release workflow separately signs the Zarf package and attests its SBOM
 3. Three deployment variants: **Helm chart**, **pure Zarf**, **peat-mesh-node**
 
 All variants share the same `Package` CR definitions but differ in _how_ the application workloads are delivered.
@@ -29,8 +29,11 @@ All variants share the same `Package` CR definitions but differ in _how_ the app
 | amaru | `szl-amaru` | 8080 | `uds-szl-amaru` | `/szl-operators` | Yes |
 | rosie | `szl-rosie` | 8080 | `uds-szl-rosie` | `/szl-operators` | Yes |
 | killinchu | `szl-killinchu` | 8080 | `uds-szl-killinchu` | `/szl-operators` | Yes |
+| defensive control plane | `szl-defensive-control-plane` | 8080 | None | None | No |
 
-All applications are served over the UDS **tenant** gateway (default). No passthrough or admin gateway exposure unless a specific app requires raw TLS.
+The five flagship surfaces use the UDS **tenant** gateway. The Defensive Control
+Plane is cluster-only, default-deny, and intentionally has no gateway, SSO, Peat,
+metrics, provider-connector, or production-operational claim in this release.
 
 ---
 
@@ -52,16 +55,13 @@ szl-fleet-overlay/
 │   ├── crds/                          # (empty — CRDs shipped by uds-core)
 │   └── templates/
 │       ├── _helpers.tpl
-│       ├── namespace-a11oy.yaml
 │       ├── package-a11oy.yaml
-│       ├── namespace-sentra.yaml
 │       ├── package-sentra.yaml
-│       ├── namespace-amaru.yaml
 │       ├── package-amaru.yaml
-│       ├── namespace-rosie.yaml
 │       ├── package-rosie.yaml
-│       ├── namespace-killinchu.yaml
-│       └── package-killinchu.yaml
+│       ├── package-killinchu.yaml
+│       ├── package-defensive-control-plane.yaml
+│       └── workload-defensive-control-plane.yaml
 │
 ├── configs/
 │   ├── packages/                      # Package CR YAMLs (all variants use these)
@@ -69,7 +69,10 @@ szl-fleet-overlay/
 │   │   ├── package-sentra.yaml
 │   │   ├── package-amaru.yaml
 │   │   ├── package-rosie.yaml
-│   │   └── package-killinchu.yaml
+│   │   ├── package-killinchu.yaml
+│   │   └── package-defensive-control-plane.yaml
+│   ├── workloads/
+│   │   └── defensive-control-plane.yaml # SA/PVC/Deployment/Service/NetworkPolicy
 │   └── peat/                          # Peat mesh node configs
 │       ├── peat-node-a11oy.yaml
 │       ├── peat-node-sentra.yaml
@@ -77,10 +80,10 @@ szl-fleet-overlay/
 │       ├── peat-node-rosie.yaml
 │       └── peat-node-killinchu.yaml
 │
-└── receipts/                          # Doctrine-pinned receipts
-    ├── checksums.txt                  # SHA256 of every config file
-    ├── checksums.txt.sig              # cosign detached signature
-    └── doctrine-pin.yaml             # Doctrine version lock record
+└── receipts/                          # Doctrine-pinned evidence inputs
+    ├── checksums.txt                  # canonical source checksum manifest
+    ├── demo-receipts.jsonl            # 24 MODELED receipts across six surfaces
+    └── doctrine-pin.yaml              # Doctrine version and release identity lock
 ```
 
 ---
@@ -198,7 +201,7 @@ constants:
 variables:
   - name: VERSION
     description: "Package version"
-    default: "0.1.0"
+    default: "0.2.0"
   - name: ARCH
     description: "Target architecture"
     default: "amd64"
@@ -299,24 +302,19 @@ components:
   # ── Phase 4: Receipts ─────────────────────────────────────────────────────
   - name: szl-doctrine-receipts
     required: true
-    description: "Doctrine-pinned receipts for SLSA L1 attestation"
+    description: "Doctrine-pinned source checksums and modeled receipt fixtures"
     files:
       - source: receipts/checksums.txt
         target: /var/szl/receipts/checksums.txt
-      - source: receipts/checksums.txt.sig
-        target: /var/szl/receipts/checksums.txt.sig
       - source: receipts/doctrine-pin.yaml
         target: /var/szl/receipts/doctrine-pin.yaml
-    actions:
-      onDeploy:
-        after:
-          - cmd: |
-              cosign verify-blob \
-                --key /var/szl/receipts/cosign.pub \
-                --signature /var/szl/receipts/checksums.txt.sig \
-                /var/szl/receipts/checksums.txt && echo "Receipt signature VALID"
-            description: "Verify doctrine receipt cosign signature"
 ```
+
+The checked-in manifest is verified from the repository root with
+`python3 scripts/source_checksums.py check`. It is not an inner signature. The
+`v0.2.0` tag workflow, whose target must be on protected main history, keyless-signs the built Zarf package, emits a
+DSSE SBOM attestation, reads the OCI package back byte-for-byte, and publishes
+the verification bundles as durable GitHub Release assets.
 
 ---
 
@@ -331,8 +329,8 @@ apiVersion: v2
 name: szl-fleet-overlay
 description: "SZL Fleet UDS Package Overlay — Helm variant"
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.2.0
+appVersion: "0.2.0"
 keywords:
   - uds
   - szl
@@ -595,33 +593,26 @@ spec:
       - MissionOwner
   packages:
     - name: szl-fleet-overlay
-      version: "0.1.0"
+      version: "0.2.0"
       checksumFile: "checksums.txt"
-      signedBy: "szl-holdings-cosign-key"
+      checksumState: "VERIFIED_SOURCE"
   attestations:
     - type: "PackageIntegrity"
-      method: "cosign-detached-signature"
-      keyRef: "cosign.pub"
+      method: "keyless-cosign-bundle"
+      state: "PENDING_CI"
+      workflow: ".github/workflows/zarf-package-sign.yml@refs/tags/v0.2.0"
 ```
 
 ### Generating the Receipt in CI
 
 ```bash
-# In tasks.yaml:
-tasks:
-  - name: sign-receipts
-    description: "Generate and sign doctrine receipts"
-    actions:
-      - cmd: |
-          # Generate checksums of all config files
-          find configs/ -type f | sort | xargs sha256sum > receipts/checksums.txt
-          echo "$(sha256sum receipts/doctrine-pin.yaml)" >> receipts/checksums.txt
-          # Sign with cosign (key in COSIGN_KEY env var injected by CI)
-          cosign sign-blob \
-            --key "${COSIGN_KEY_PATH}" \
-            --output-signature receipts/checksums.txt.sig \
-            receipts/checksums.txt
-        description: "Sign receipts with cosign"
+# Canonical, cross-platform generation and verification:
+python3 scripts/source_checksums.py write
+python3 scripts/source_checksums.py check
+
+# Canonical publication is not a local task. After the exact v0.2.0 source is
+# merged to protected main, create the signed v0.2.0 tag; the tag workflow
+# builds, signs, attests, publishes, reads back, and releases the artifact.
 ```
 
 ---
@@ -633,81 +624,33 @@ Phase                     Command
 ─────────────────────────────────────────────────────────────────
 1. Zarf init (once)       uds zarf init --confirm
 2. Deploy uds-core        uds deploy oci://ghcr.io/defenseunicorns/packages/uds/core:1.5.0-upstream
-3. Deploy fleet overlay   uds deploy oci://ghcr.io/szl-holdings/fleet-overlay:0.1.0 --confirm
+3. Pull fleet overlay     zarf package pull oci://ghcr.io/szl-holdings/packages/szl-fleet-overlay:0.2.0-amd64
+4. Verify release bundle  cosign verify-blob --bundle zarf-package-szl-fleet-overlay-amd64-0.2.0.tar.zst.cosign.bundle \
+                            --certificate-identity https://github.com/szl-holdings/szl-fleet-overlay/.github/workflows/zarf-package-sign.yml@refs/tags/v0.2.0 \
+                            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+                            zarf-package-szl-fleet-overlay-amd64-0.2.0.tar.zst
+5. Deploy fleet overlay   uds zarf package deploy zarf-package-szl-fleet-overlay-amd64-0.2.0.tar.zst --confirm
    (or Helm variant)      helm upgrade --install szl-fleet-overlay ./chart -n szl-system --create-namespace \
                             -f chart/values/prod.yaml
-4. Verify portal tiles    curl -sk https://portal.uds.dev/api/packages | jq '.[] | select(.name | startswith("szl"))'
-5. Verify receipts        cosign verify-blob --key cosign.pub --signature receipts/checksums.txt.sig receipts/checksums.txt
+6. Verify portal tiles    curl -sk https://portal.uds.dev/api/packages | jq '.[] | select(.name | startswith("szl"))'
+7. Verify source manifest python3 scripts/source_checksums.py check
 ```
+
+Before step 5, apply `configs/namespaces.yaml` and provision the two distinct
+64-hex DCP keys described in `README.md`. The five flagship Package CRs register
+pre-existing workloads; this overlay does not claim to deploy those five images.
 
 ---
 
 ## 10. tasks.yaml (Maru)
 
-```yaml
-includes:
-  - actions: https://raw.githubusercontent.com/defenseunicorns/uds-common/refs/tags/v1.24.9/tasks/actions.yaml
+```bash
+# Canonical local entry points; see tasks.yaml for the fail-closed definitions.
+uds run sign-receipts    # generate and verify the canonical source manifest
+uds run build            # build the local Zarf package
+uds run deploy-local     # validate the DCP key Secret, then deploy
+uds run validate         # Package CRs plus DCP rollout/digest/status checks
 
-variables:
-  - name: VERSION
-    default: "0.1.0"
-  - name: ARCH
-    default: "amd64"
-  - name: REGISTRY
-    default: "ghcr.io/szl-holdings"
-
-tasks:
-  - name: default
-    description: "Full build and local dev deploy"
-    actions:
-      - task: build
-      - task: deploy-local
-
-  - name: build
-    description: "Build the Zarf package"
-    actions:
-      - cmd: uds zarf package create . -a ${ARCH} --confirm --skip-sbom
-        description: "Create szl-fleet-overlay Zarf package"
-
-  - name: sign-receipts
-    description: "Sign doctrine receipts"
-    actions:
-      - cmd: |
-          find configs/ -type f | sort | xargs sha256sum > receipts/checksums.txt
-          cosign sign-blob --key "${COSIGN_KEY_PATH}" \
-            --output-signature receipts/checksums.txt.sig \
-            receipts/checksums.txt
-        description: "Generate and sign checksums"
-
-  - name: publish
-    description: "Publish to GHCR"
-    actions:
-      - cmd: uds zarf package publish zarf-package-szl-fleet-overlay-${ARCH}-${VERSION}.tar.zst oci://${REGISTRY}/
-        description: "Push to GHCR"
-
-  - name: deploy-local
-    description: "Deploy to local k3d cluster"
-    actions:
-      - cmd: uds zarf package deploy zarf-package-szl-fleet-overlay-${ARCH}-*.tar.zst --confirm
-        description: "Deploy fleet overlay"
-
-  - name: validate
-    description: "Validate all Package CRs reached Ready phase"
-    actions:
-      - cmd: |
-          for app in a11oy sentra amaru rosie killinchu; do
-            phase=$(kubectl get package szl-${app} -n szl-${app} -o jsonpath='{.status.phase}' 2>/dev/null)
-            if [ "${phase}" != "Ready" ]; then
-              echo "FAIL: szl-${app} phase=${phase}"
-              exit 1
-            fi
-            echo "OK: szl-${app} Ready"
-          done
-        description: "Check Package CR phases"
-      - cmd: |
-          cosign verify-blob \
-            --key receipts/cosign.pub \
-            --signature receipts/checksums.txt.sig \
-            receipts/checksums.txt && echo "Receipt VALID"
-        description: "Verify doctrine receipt"
+# There is no local canonical publication command. After protected-main merge,
+# the signed v0.2.0 tag is the sole release trigger.
 ```
