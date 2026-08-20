@@ -1,15 +1,15 @@
 kind: UDSBundle
 metadata:
   name: szl-fleet-overlay
-  description: "SZL Fleet UDS Bundle — deploys UDS Core + SZL fleet overlay for all 5 flagships"
-  version: "0.1.0"
+  description: "UDS Core plus five flagship Package registrations and the Defensive Control Plane workload"
+  version: "0.2.0"
   # Doctrine: v11 LOCKED 749/14/163 at kernel commit c7c0ba17 | SLSA L1
 
 packages:
-  # Phase 1: UDS Core (prerequisite — must be deployed first)
+  # Phase 1: UDS Core prerequisite.
   - name: core
     repository: ghcr.io/defenseunicorns/packages/uds/core
-    # UPSTREAM flavor (NOT registry1/Iron Bank); verified published + pullable on GHCR.
+    # Upstream flavor; no alternate registry provenance is claimed.
     ref: "1.5.0-upstream"
     overrides:
       istio-admin-gateway:
@@ -23,7 +23,7 @@ packages:
             - path: "service.annotations"
               value: {}
 
-  # Phase 2: SZL Fleet Overlay
+  # Phase 2: local fleet overlay.
   - name: szl-fleet-overlay
     path: "."
-    ref: "0.1.0"
+    ref: "0.2.0"

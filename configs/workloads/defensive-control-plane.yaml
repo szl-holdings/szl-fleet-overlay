@@ -1,0 +1,204 @@
+# SZL Defensive Control Plane v0.4.0 workload
+# Source: cbb7bddf0b584987830617e68725e36e9ed27434
+# This manifest intentionally contains no Secret values.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: szl-defensive-control-plane
+  namespace: szl-defensive-control-plane
+  labels:
+    app: szl-defensive-control-plane
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: szl-defensive-control-plane-data
+  namespace: szl-defensive-control-plane
+  annotations:
+    helm.sh/resource-policy: keep
+  labels:
+    app: szl-defensive-control-plane
+    app.kubernetes.io/name: szl-defensive-control-plane
+    app.kubernetes.io/version: "0.4.0"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: szl-defensive-control-plane
+  namespace: szl-defensive-control-plane
+  labels:
+    app: szl-defensive-control-plane
+    app.kubernetes.io/name: szl-defensive-control-plane
+    app.kubernetes.io/version: "0.4.0"
+  annotations:
+    szl.io/doctrine-version: "v11"
+    szl.io/doctrine-pin: "749/14/163"
+    szl.io/kernel-commit: "c7c0ba17"
+    szl.io/source-revision: "cbb7bddf0b584987830617e68725e36e9ed27434"
+    szl.io/image-digest: "sha256:01f1fa2d3a4eb3cffb873f7393b64050df77f4383fa9d219163fa0be0bd6dce6"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: szl-defensive-control-plane
+  template:
+    metadata:
+      labels:
+        app: szl-defensive-control-plane
+        app.kubernetes.io/name: szl-defensive-control-plane
+        app.kubernetes.io/version: "0.4.0"
+    spec:
+      serviceAccountName: szl-defensive-control-plane
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: defensive-control-plane
+          image: ghcr.io/szl-holdings/szl-defensive-control-plane@sha256:01f1fa2d3a4eb3cffb873f7393b64050df77f4383fa9d219163fa0be0bd6dce6
+          imagePullPolicy: IfNotPresent
+          args:
+            - serve
+            - --db
+            - /data/control-plane.sqlite3
+            - --mode
+            - cluster-readonly
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8080"
+          env:
+            - name: DCP_EVENT_ROOT_KEY_HEX
+              valueFrom:
+                secretKeyRef:
+                  name: szl-defensive-control-plane-signing-keys
+                  key: event-root-key-hex
+                  optional: false
+            - name: DCP_EVIDENCE_KEY_HEX
+              valueFrom:
+                secretKeyRef:
+                  name: szl-defensive-control-plane-signing-keys
+                  key: evidence-key-hex
+                  optional: false
+            - name: DCP_TRUSTED_HOSTS
+              value: >-
+                szl-defensive-control-plane,
+                szl-defensive-control-plane.szl-defensive-control-plane,
+                szl-defensive-control-plane.szl-defensive-control-plane.svc,
+                szl-defensive-control-plane.szl-defensive-control-plane.svc.cluster.local
+            - name: TMPDIR
+              value: /tmp
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /livez
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: szl-defensive-control-plane
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: szl-defensive-control-plane
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: szl-defensive-control-plane
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: szl-defensive-control-plane-data
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: szl-defensive-control-plane
+  namespace: szl-defensive-control-plane
+  labels:
+    app: szl-defensive-control-plane
+    app.kubernetes.io/name: szl-defensive-control-plane
+spec:
+  type: ClusterIP
+  selector:
+    app: szl-defensive-control-plane
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: szl-defensive-control-plane-default-deny
+  namespace: szl-defensive-control-plane
+  labels:
+    app: szl-defensive-control-plane
+spec:
+  podSelector:
+    matchLabels:
+      app: szl-defensive-control-plane
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress: []

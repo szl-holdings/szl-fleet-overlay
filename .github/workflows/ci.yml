@@ -32,7 +32,9 @@ jobs:
             chart/values/staging.yaml \
             chart/values/prod.yaml \
             configs/packages/ \
+            configs/workloads/ \
             configs/peat/ \
+            uds-packages/ \
             receipts/doctrine-pin.yaml
 
   helm-lint:
@@ -68,7 +70,7 @@ jobs:
 
       - name: Install Zarf
         run: |
-          curl -sL https://github.com/defenseunicorns/zarf/releases/download/v0.38.2/zarf_v0.38.2_Linux_amd64 \
+          curl -sL https://github.com/zarf-dev/zarf/releases/download/v0.77.0/zarf_v0.77.0_Linux_amd64 \
             -o /usr/local/bin/zarf
           chmod +x /usr/local/bin/zarf
 
@@ -114,4 +116,59 @@ jobs:
             fi
           done
           [ "${FAIL}" -eq 0 ] || exit 1
+
+      - name: Verify immutable Defensive Control Plane image contract
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          import yaml
+          from pathlib import Path
+
+          documents = list(yaml.safe_load_all(
+              Path("configs/workloads/defensive-control-plane.yaml").read_text(encoding="utf-8")
+          ))
+          deployments = [doc for doc in documents if doc and doc.get("kind") == "Deployment"]
+          assert len(deployments) == 1, f"expected one DCP Deployment, got {len(deployments)}"
+          image = deployments[0]["spec"]["template"]["spec"]["containers"][0]["image"]
+          pattern = r"^ghcr\.io/szl-holdings/szl-defensive-control-plane@sha256:[0-9a-f]{64}$"
+          assert re.fullmatch(pattern, image), f"DCP image is not canonical and digest-only: {image}"
+          assert image.endswith("@sha256:01f1fa2d3a4eb3cffb873f7393b64050df77f4383fa9d219163fa0be0bd6dce6")
+          print(f"Immutable DCP image: {image}")
+          PY
+
+      - name: Verify DCP version and digest synchronization
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import yaml
+          from pathlib import Path
+
+          expected_version = "0.4.0"
+          expected_revision = "cbb7bddf0b584987830617e68725e36e9ed27434"
+          expected_digest = "sha256:01f1fa2d3a4eb3cffb873f7393b64050df77f4383fa9d219163fa0be0bd6dce6"
+          values = yaml.safe_load(Path("chart/values.yaml").read_text(encoding="utf-8"))
+          app = values["apps"]["defensiveControlPlane"]
+          assert app["image"]["version"] == expected_version
+          assert app["image"]["sourceRevision"] == expected_revision
+          assert app["image"]["digest"] == expected_digest
+          zarf = yaml.safe_load(Path("zarf.yaml").read_text(encoding="utf-8"))
+          constants = {item["name"]: item["value"] for item in zarf["constants"]}
+          assert constants["DCP_VERSION"] == expected_version
+          assert constants["DCP_SOURCE_REVISION"] == expected_revision
+          assert constants["DCP_IMAGE_DIGEST"] == expected_digest
+          component = next(item for item in zarf["components"] if item["name"] == "szl-defensive-control-plane-workload")
+          assert component["images"] == [f"ghcr.io/szl-holdings/szl-defensive-control-plane@{expected_digest}"]
+          receipt = yaml.safe_load(Path("receipts/doctrine-pin.yaml").read_text(encoding="utf-8"))
+          image = receipt["spec"]["images"][0]
+          assert image["version"] == expected_version
+          assert image["sourceRevision"] == expected_revision
+          assert image["subject"].endswith("@" + expected_digest)
+          print("DCP identity is synchronized across chart, Zarf, and receipt")
+          PY
+
+      - name: Verify deterministic source checksums
+        run: |
+          set -euo pipefail
+          python3 scripts/source_checksums.py check
           echo "Chart and config manifests clean — no forbidden framework references"

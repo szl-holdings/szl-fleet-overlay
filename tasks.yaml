@@ -1,13 +1,13 @@
 # SZL Fleet Overlay — Maru Task Runner
 # Doctrine v11 LOCKED 749/14/163 at kernel commit c7c0ba17
-# One-command inner-loop: `uds run dev` spins k3d + deploys all 5 flagships
+# Inner loop registers five pre-existing flagships and deploys the Defensive Control Plane.
 
 includes:
   - actions: https://raw.githubusercontent.com/defenseunicorns/uds-common/refs/tags/v1.24.9/tasks/actions.yaml
 
 variables:
   - name: VERSION
-    default: "0.1.0"
+    default: "0.2.0"
   - name: ARCH
     default: "amd64"
   - name: REGISTRY
@@ -16,49 +16,46 @@ variables:
     default: "szl-local"
   - name: DOMAIN
     default: "uds.dev"
-  # Flagships to deploy (space-separated, ordered by dependency)
+  # Managed Package CRs (space-separated, ordered by dependency)
   - name: FLAGSHIP_ORDER
-    default: "a11oy sentra amaru rosie killinchu"
+    default: "a11oy sentra amaru rosie killinchu defensive-control-plane"
 
 ###############################################################################
-# DEFAULT — full build + local dev deploy                                     #
+# DEFAULT — build + local registration/deploy                                #
 ###############################################################################
 tasks:
   - name: default
-    description: "Full build + local k3d dev cluster deploy (alias for: build → dev)"
+    description: "Build + local registration/DCP deploy (alias for: build → dev)"
     actions:
       - task: build
       - task: dev
 
 ###############################################################################
-# INNER LOOP — one command, all 5 flagships in k3d                            #
+# INNER LOOP — register five pre-existing flagships and deploy DCP            #
 ###############################################################################
   - name: dev
     description: |
       Inner-loop developer workflow.
-      Prerequisites: k3d, kubectl, uds CLI (>=0.27.0), helm, cosign.
+      Prerequisites: k3d, kubectl, uds CLI (>=0.32.0), helm, cosign,
+      and the precreated DCP signing-key Secret documented in README.md.
       What it does:
         1. Ensures a k3d cluster named ${CLUSTER_NAME} exists
         2. Installs UDS Core (lightweight) if not present
         3. Creates SZL namespaces
-        4. Deploys the fleet overlay package (all 5 flagships)
-        5. Validates all 5 Package CRs reach Ready phase
+        4. Registers five pre-existing flagship workloads and deploys the Defensive Control Plane
+        5. Validates all managed Package CRs and the DCP read-only status runtime
         6. Prints the service URLs for local smoke-testing
     actions:
       - task: cluster-up
       - task: uds-core-ensure
       - task: build
-      - task: deploy-local
-      - task: validate
-      - task: urls
+      - task: deploy-all
 
   - name: dev-quick
     description: "Re-deploy only — skip cluster bring-up and UDS Core (assumes cluster already running)"
     actions:
       - task: build
-      - task: deploy-local
-      - task: validate
-      - task: urls
+      - task: deploy-all
 
 ###############################################################################
 # CLUSTER LIFECYCLE                                                            #
@@ -132,54 +129,37 @@ tasks:
 ###############################################################################
   - name: sign-receipts
     description: |
-      Generate and sign doctrine receipts.
-      Requires: COSIGN_KEY_PATH env var pointing to a cosign private key.
-      For keyless (CI), set COSIGN_EXPERIMENTAL=1 instead.
+      Regenerate and verify the deterministic source checksum manifest.
+      The published Zarf artifact receives the release signature in CI.
     actions:
       - cmd: |
-          mkdir -p receipts
-          find configs/ -type f -name "*.yaml" | sort | xargs sha256sum > receipts/checksums.txt
-          echo "→ checksums.txt:"
+          set -euo pipefail
+          python3 scripts/source_checksums.py write
+          python3 scripts/source_checksums.py check
+          echo "checksums.txt:"
           cat receipts/checksums.txt
-          if [ -n "${COSIGN_KEY_PATH}" ]; then
-            cosign sign-blob \
-              --key "${COSIGN_KEY_PATH}" \
-              --output-signature receipts/checksums.txt.sig \
-              receipts/checksums.txt
-            echo "✓ Signed with key ${COSIGN_KEY_PATH}"
-          elif [ "${COSIGN_EXPERIMENTAL}" = "1" ]; then
-            cosign sign-blob \
-              --output-signature receipts/checksums.txt.sig \
-              receipts/checksums.txt
-            echo "✓ Signed keyless (OIDC)"
-          else
-            echo "WARN: neither COSIGN_KEY_PATH nor COSIGN_EXPERIMENTAL=1 set; checksums.txt unsigned"
-          fi
-        description: "Generate checksums and optionally sign"
+        description: "Generate and verify source checksums"
 
   - name: verify-receipts
-    description: "Verify doctrine receipt signature"
+    description: "Verify deterministic source checksums"
     actions:
       - cmd: |
-          if [ -f receipts/checksums.txt.sig ] && [ -f receipts/cosign.pub ]; then
-            cosign verify-blob \
-              --key receipts/cosign.pub \
-              --signature receipts/checksums.txt.sig \
-              receipts/checksums.txt && echo "✓ Receipt VALID"
-          else
-            echo "WARN: cosign.pub or .sig not found — run: uds run sign-receipts first"
-            exit 1
-          fi
-        description: "Verify checksums.txt.sig against cosign.pub"
+          set -euo pipefail
+          python3 scripts/source_checksums.py check
+          ! grep -q PLACEHOLDER receipts/checksums.txt
+        description: "Verify source checksum manifest"
 
 ###############################################################################
 # PUBLISH                                                                     #
 ###############################################################################
   - name: publish
-    description: "Publish szl-fleet-overlay package to GHCR"
+    description: "Canonical publication is restricted to the v0.2.0 tag workflow"
     actions:
-      - cmd: uds zarf package publish zarf-package-szl-fleet-overlay-${ARCH}-${VERSION}.tar.zst oci://${REGISTRY}/
-        description: "Push package to GHCR"
+      - cmd: |
+          echo "Canonical publication runs only from .github/workflows/zarf-package-sign.yml"
+          echo "Create v0.2.0 only after the exact commit is merged to protected main."
+          exit 1
+        description: "Refuse local canonical publication"
 
 ###############################################################################
 # DEPLOY                                                                      #
@@ -187,27 +167,38 @@ tasks:
   - name: deploy-local
     description: "Deploy szl-fleet-overlay to the local k3d cluster"
     actions:
+      - task: validate-dcp-secrets
       - cmd: uds zarf package deploy zarf-package-szl-fleet-overlay-${ARCH}-*.tar.zst --confirm
         description: "Deploy fleet overlay"
 
-  - name: deploy-all
-    description: |
-      One-command deploy of all 5 flagships.
-      Assumes cluster is up and UDS Core is installed.
-      Deploys the fleet overlay which registers all 5 SZL flagships as
-      UDS-managed Package CRs (a11oy → sentra → amaru → rosie → killinchu).
+  - name: validate-dcp-secrets
+    description: "Fail closed unless the two distinct DCP signing keys exist"
     actions:
       - cmd: |
-          echo "▶ SZL Fleet Deploy — all 5 flagships"
-          echo "  Cluster: ${CLUSTER_NAME}"
-          echo "  Domain:  ${DOMAIN}"
-          echo "  Registry: ${REGISTRY}"
-          echo ""
-          # Deploy the fleet overlay (registers all 5 Package CRs in order)
-          uds zarf package deploy zarf-package-szl-fleet-overlay-${ARCH}-*.tar.zst --confirm
-          echo ""
-          echo "▶ Validating Package CRs …"
-        description: "Deploy all 5 SZL flagships via fleet overlay"
+          set -euo pipefail
+          namespace="szl-defensive-control-plane"
+          signing_secret="szl-defensive-control-plane-signing-keys"
+          kubectl get namespace "${namespace}" >/dev/null
+          event_b64=$(kubectl get secret "${signing_secret}" -n "${namespace}" -o jsonpath='{.data.event-root-key-hex}')
+          evidence_b64=$(kubectl get secret "${signing_secret}" -n "${namespace}" -o jsonpath='{.data.evidence-key-hex}')
+          test -n "${event_b64}"
+          test -n "${evidence_b64}"
+          event_key=$(printf '%s' "${event_b64}" | base64 -d)
+          evidence_key=$(printf '%s' "${evidence_b64}" | base64 -d)
+          case "${event_key}" in *[!0-9a-f]*|'') exit 1 ;; esac
+          case "${evidence_key}" in *[!0-9a-f]*|'') exit 1 ;; esac
+          test "${#event_key}" -eq 64
+          test "${#evidence_key}" -eq 64
+          test "${event_key}" != "${evidence_key}"
+        description: "Require two valid and distinct DCP signing keys"
+
+  - name: deploy-all
+    description: |
+      Coordinated Package-CR registration and DCP deploy after Secret bootstrap.
+      Assumes cluster is up and UDS Core is installed.
+      Registers every managed Package CR and deploys the DCP workload.
+    actions:
+      - task: deploy-local
       - task: validate
       - task: urls
 
@@ -215,12 +206,13 @@ tasks:
 # VALIDATE                                                                    #
 ###############################################################################
   - name: validate
-    description: "Validate all 5 Package CRs reached Ready phase"
+    description: "Validate all managed Package CRs and the DCP runtime"
     actions:
       - cmd: |
+          set -euo pipefail
           echo "▶ Waiting for Package CRs to reach Ready …"
           FAIL=0
-          for app in a11oy sentra amaru rosie killinchu; do
+          for app in ${FLAGSHIP_ORDER}; do
             # Poll up to 5 minutes (30s × 10)
             for i in $(seq 1 10); do
               phase=$(kubectl get package szl-${app} -n szl-${app} -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound")
@@ -237,13 +229,46 @@ tasks:
               fi
             done
           done
+          kubectl rollout status deployment/szl-defensive-control-plane \
+            -n szl-defensive-control-plane --timeout=300s
+          dcp_pod=$(kubectl get pod -n szl-defensive-control-plane \
+            -l app=szl-defensive-control-plane -o jsonpath='{.items[0].metadata.name}')
+          dcp_image_id=$(kubectl get pod -n szl-defensive-control-plane "${dcp_pod}" \
+            -o jsonpath='{.status.containerStatuses[?(@.name=="defensive-control-plane")].imageID}')
+          case "${dcp_image_id}" in
+            *sha256:01f1fa2d3a4eb3cffb873f7393b64050df77f4383fa9d219163fa0be0bd6dce6*) ;;
+            *) echo "Unexpected DCP imageID: ${dcp_image_id}"; exit 1 ;;
+          esac
+          kubectl exec -i -n szl-defensive-control-plane "${dcp_pod}" -- python - <<'PY'
+          import json
+          import urllib.request
+
+          def get(path):
+              request = urllib.request.Request(
+                  "http://127.0.0.1:8080" + path,
+                  headers={"Host": "szl-defensive-control-plane"},
+              )
+              with urllib.request.urlopen(request, timeout=3) as response:
+                  assert response.status == 200
+                  return json.load(response)
+
+          ready = get("/readyz")
+          build = get("/api/build-info")
+          lanes = get("/api/lanes")
+          assert ready["productionReady"] is False
+          assert ready["externalConnectors"] == "UNAVAILABLE"
+          assert build["version"] == "0.4.0"
+          assert build["sourceRevision"] == "cbb7bddf0b584987830617e68725e36e9ed27434"
+          assert build["deploymentVerified"] is False
+          assert lanes["productionOperational"] is False
+          PY
           if [ "${FAIL}" = "1" ]; then
             echo ""
             echo "✗ One or more Package CRs failed to reach Ready"
             exit 1
           fi
           echo ""
-          echo "✓ All 5 flagship Package CRs are Ready"
+          echo "All managed Package CRs are Ready and DCP runtime checks passed"
         description: "Poll Package CRs for Ready status"
 
   - name: validate-doctrine
@@ -277,27 +302,31 @@ tasks:
 # UTILITY                                                                     #
 ###############################################################################
   - name: urls
-    description: "Print local service URLs for all 5 flagships"
+    description: "Print local service URLs for managed fleet surfaces"
     actions:
       - cmd: |
           echo ""
           echo "▶ SZL Flagship Service URLs (local k3d)"
           echo "  Domain: ${DOMAIN}"
           echo ""
-          for app in a11oy sentra amaru rosie killinchu; do
+          for app in ${FLAGSHIP_ORDER}; do
             svc=$(kubectl get svc -n szl-${app} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "(not found)")
             echo "  szl-${app}:"
             echo "    k8s service: ${svc}.szl-${app}.svc.cluster.local"
-            echo "    ingress:     https://${app}.${DOMAIN}/api/${app}/v1/health"
+            if [ "${app}" = "defensive-control-plane" ]; then
+              echo "    cluster-only: http://${svc}.szl-${app}.svc.cluster.local:8080/readyz"
+            else
+              echo "    ingress:     https://${app}.${DOMAIN}/api/${app}/v1/health"
+            fi
           done
           echo ""
           echo "  Tip: add '127.0.0.1  *.${DOMAIN}' to /etc/hosts for local DNS"
 
   - name: logs
-    description: "Stream logs from all 5 flagships simultaneously"
+    description: "Stream logs from managed fleet surfaces"
     actions:
       - cmd: |
-          for app in a11oy sentra amaru rosie killinchu; do
+          for app in ${FLAGSHIP_ORDER}; do
             pod=$(kubectl get pod -n szl-${app} -l app=szl-${app} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
             if [ -n "${pod}" ]; then
               kubectl logs -n szl-${app} "${pod}" -f --tail=50 &
@@ -311,12 +340,12 @@ tasks:
           wait
 
   - name: status
-    description: "Print status of all cluster resources across all 5 flagships"
+    description: "Print status of all managed fleet surfaces"
     actions:
       - cmd: |
           echo "▶ SZL Fleet Status"
           echo ""
-          for app in a11oy sentra amaru rosie killinchu; do
+          for app in ${FLAGSHIP_ORDER}; do
             echo "─── szl-${app} ───"
             kubectl get all -n szl-${app} 2>/dev/null || echo "  (namespace not found)"
             phase=$(kubectl get package szl-${app} -n szl-${app} -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound")
@@ -325,7 +354,7 @@ tasks:
           done
 
   - name: clean
-    description: "Remove deployed SZL resources from cluster (keeps cluster running)"
+    description: "Remove five demo flagships; preserve the DCP namespace and evidence PVC"
     actions:
       - cmd: |
           for app in a11oy sentra amaru rosie killinchu; do
@@ -334,7 +363,7 @@ tasks:
             echo "✓ Removed szl-${app}"
           done
           kubectl delete namespace szl-system --ignore-not-found=true
-          echo "✓ SZL resources removed"
+          echo "Five demo flagships removed; DCP namespace and evidence PVC retained"
         description: "Delete SZL Package CRs and namespaces"
 
   - name: help
@@ -345,27 +374,27 @@ tasks:
           echo "Doctrine v11 LOCKED 749/14/163 · Λ Conjecture 1 · SLSA L1"
           echo ""
           echo "QUICK START:"
-          echo "  uds run dev          # full inner loop: cluster + uds-core + build + deploy + validate"
-          echo "  uds run deploy-all   # deploy all 5 flagships (cluster must be up)"
+          echo "  uds run dev          # requires the precreated DCP signing-key Secret"
+          echo "  uds run deploy-all   # cluster, UDS Core, and DCP Secret must exist"
           echo ""
           echo "TASKS:"
-          echo "  dev              Full inner-loop (cluster + core + build + deploy + validate)"
-          echo "  dev-quick        Re-deploy only (skip cluster bring-up)"
+          echo "  dev              Build/deploy/validate after DCP Secret bootstrap"
+          echo "  dev-quick        Re-deploy only after DCP Secret bootstrap"
           echo "  cluster-up       Create k3d cluster"
           echo "  cluster-down     Delete k3d cluster"
           echo "  cluster-reset    Tear down + re-create cluster"
           echo "  uds-core-ensure  Install UDS Core if not present"
           echo "  build            Build Zarf package"
           echo "  build-with-sbom  Build with SBOM (SLSA L1)"
-          echo "  sign-receipts    Generate + sign doctrine receipts"
-          echo "  verify-receipts  Verify receipt signature"
-          echo "  publish          Publish to GHCR"
+          echo "  sign-receipts    Generate + verify source checksums"
+          echo "  verify-receipts  Verify source checksum manifest"
+          echo "  publish          Refuse local canonical release publication"
           echo "  deploy-local     Deploy package to local cluster"
-          echo "  deploy-all       Deploy all 5 flagships (one command)"
-          echo "  validate         Wait for all Package CRs to reach Ready"
+          echo "  deploy-all       Register flagship CRs and deploy DCP"
+          echo "  validate         Verify Package CRs, DCP rollout, digest, and status API"
           echo "  validate-doctrine Check doctrine pin in deployed receipts"
           echo "  urls             Print local service URLs"
           echo "  logs             Stream logs from all flagships"
           echo "  status           Print cluster resource status"
-          echo "  clean            Remove SZL resources from cluster"
+          echo "  clean            Remove five demo flagships; preserve DCP evidence"
           echo "  help             Show this help"

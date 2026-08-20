@@ -55,3 +55,28 @@ apps:
     clientId: uds-szl-killinchu
     displayName: "SZL Killinchu"
     peatEnabled: true
+
+  defensiveControlPlane:
+    enabled: true
+    namespace: szl-defensive-control-plane
+    servicePort: 8080
+    displayName: "SZL Defensive Control Plane"
+    image:
+      repository: ghcr.io/szl-holdings/szl-defensive-control-plane
+      digest: sha256:01f1fa2d3a4eb3cffb873f7393b64050df77f4383fa9d219163fa0be0bd6dce6
+      pullPolicy: IfNotPresent
+      version: "0.4.0"
+      sourceRevision: cbb7bddf0b584987830617e68725e36e9ed27434
+    signingSecretName: szl-defensive-control-plane-signing-keys
+    # Optional for direct Helm installs; Zarf rewrites the vendored image to its seed registry.
+    imagePullSecretName: ""
+    persistence:
+      size: 1Gi
+      storageClassName: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi

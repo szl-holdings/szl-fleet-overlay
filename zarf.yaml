@@ -6,7 +6,7 @@ kind: ZarfPackageConfig
 metadata:
   name: szl-fleet-overlay
   description: "SZL Fleet UDS Package Overlay — registers all SZL flagships as UDS-managed applications with doctrine-pinned receipts"
-  version: "0.1.0"
+  version: "0.2.0"
   vendor: "SZL Holdings"
   url: "https://github.com/szl-holdings/szl-fleet-overlay"
   yolo: false
@@ -20,6 +20,12 @@ constants:
     value: "c7c0ba17"
   - name: SLSA_LEVEL
     value: "L1"
+  - name: DCP_VERSION
+    value: "0.4.0"
+  - name: DCP_SOURCE_REVISION
+    value: "cbb7bddf0b584987830617e68725e36e9ed27434"
+  - name: DCP_IMAGE_DIGEST
+    value: "sha256:01f1fa2d3a4eb3cffb873f7393b64050df77f4383fa9d219163fa0be0bd6dce6"
 
 variables:
   - name: DOMAIN
@@ -44,6 +50,11 @@ components:
               cluster:
                 kind: Namespace
                 name: szl-a11oy
+                condition: Exists
+          - wait:
+              cluster:
+                kind: Namespace
+                name: szl-defensive-control-plane
                 condition: Exists
 
   - name: szl-a11oy-package
@@ -91,6 +102,26 @@ components:
         files:
           - configs/packages/package-killinchu.yaml
 
+  - name: szl-defensive-control-plane-package
+    required: true
+    description: "UDS network contract for the Defensive Control Plane"
+    manifests:
+      - name: szl-defensive-control-plane-package
+        namespace: szl-defensive-control-plane
+        files:
+          - configs/packages/package-defensive-control-plane.yaml
+
+  - name: szl-defensive-control-plane-workload
+    required: true
+    description: "Single-writer SZL Defensive Control Plane v0.4.0 workload"
+    manifests:
+      - name: szl-defensive-control-plane-workload
+        namespace: szl-defensive-control-plane
+        files:
+          - configs/workloads/defensive-control-plane.yaml
+    images:
+      - ghcr.io/szl-holdings/szl-defensive-control-plane@sha256:01f1fa2d3a4eb3cffb873f7393b64050df77f4383fa9d219163fa0be0bd6dce6
+
   - name: szl-peat-mesh-nodes
     required: false
     default: true
@@ -106,11 +137,9 @@ components:
 
   - name: szl-doctrine-receipts
     required: true
-    description: "Doctrine-pinned SLSA L1 receipts"
+    description: "Doctrine pin and deterministic checksum manifest; outer Zarf package is signed in CI"
     files:
       - source: receipts/checksums.txt
         target: /var/szl/receipts/checksums.txt
-      - source: receipts/checksums.txt.sig
-        target: /var/szl/receipts/checksums.txt.sig
       - source: receipts/doctrine-pin.yaml
         target: /var/szl/receipts/doctrine-pin.yaml

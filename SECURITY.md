@@ -13,11 +13,16 @@ We do not overclaim compliance levels.
 
 **SLSA L1** — honest attestation only.
 
-- Doctrine-pinned receipts (`receipts/checksums.txt` + cosign detached signature) provide
-  integrity attestation for all config files at build time.
-- We do not claim higher SLSA levels (higher levels not yet achieved). No hermetic build environment, no SLSA provenance
-  predicate, no Sigstore Fulcio certificate chain.
-- Cosign signing key is operator-managed (not keyless).
+- `receipts/checksums.txt` is a deterministic, canonically generated source manifest;
+  `python3 scripts/source_checksums.py check` fails on missing, extra, duplicated, or
+  modified covered inputs.
+- The protected `v0.2.0` release workflow separately keyless-signs the built Zarf
+  package and emits a DSSE SBOM attestation. The modeled demo receipt chain is not a
+  production signature or runtime witness.
+- We do not claim higher SLSA levels (higher levels not yet achieved). There is
+  no hermetic build environment and no SLSA provenance predicate.
+- Release signing is keyless through GitHub OIDC, Fulcio, and Rekor; no
+  long-lived operator signing key is stored in this repository.
 
 ---
 
@@ -69,10 +74,11 @@ The following frameworks are **not** used or claimed in this package:
 - No DoD identity integration (CAC/PIV) in this overlay.
 - No FIPS-validated crypto at the overlay level; depends on UDS Core for FIPS compliance
   if required by the deployment environment.
-- Receipt cosign key management is operator responsibility. The public key (`cosign.pub`)
-  must be pre-distributed to verifiers out-of-band.
-- `checksums.txt.sig` is a placeholder stub at initial publish; operators must regenerate
-  with their own cosign key before production deployment.
+- No inner receipt signature file is shipped. Release verification binds the durable
+  outer cosign bundle to the exact GitHub Actions tag-workflow identity and Sigstore
+  issuer documented in `README.md`.
+- The 24 checked-in demo receipts cover six surfaces and are explicitly labeled
+  `MODELED`, `synthetic-demo`, and `productionOperational: false`.
 
 ---
 

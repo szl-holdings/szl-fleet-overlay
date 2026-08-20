@@ -4,7 +4,7 @@ apiVersion: szl.io/v1
 kind: DoctrineReceipt
 metadata:
   name: szl-fleet-overlay-receipt
-  createdAt: "2026-06-03T00:00:00Z"
+  createdAt: "2026-08-13T00:00:00Z"
 spec:
   doctrine:
     version: "v11"
@@ -27,10 +27,23 @@ spec:
       - MissionOwner
   packages:
     - name: szl-fleet-overlay
-      version: "0.1.0"
+      version: "0.2.0"
       checksumFile: "checksums.txt"
-      signedBy: "szl-holdings-cosign-key"
+      checksumState: "VERIFIED_SOURCE"
+      signatureState: "UNAVAILABLE"
+  images:
+    - name: szl-defensive-control-plane
+      version: "0.4.0"
+      subject: "ghcr.io/szl-holdings/szl-defensive-control-plane@sha256:01f1fa2d3a4eb3cffb873f7393b64050df77f4383fa9d219163fa0be0bd6dce6"
+      sourceRevision: "cbb7bddf0b584987830617e68725e36e9ed27434"
+      signature:
+        method: "sigstore-keyless"
+        issuer: "https://token.actions.githubusercontent.com"
+        identity: "https://github.com/szl-holdings/szl-defensive-control-plane/.github/workflows/release.yml@refs/tags/v0.4.0"
   attestations:
-    - type: "PackageIntegrity"
-      method: "cosign-detached-signature"
-      keyRef: "cosign.pub"
+    - type: "InnerChecksumSignature"
+      state: "UNAVAILABLE"
+      method: "not-packaged"
+    - type: "OuterZarfPackageSignature"
+      state: "PENDING_CI"
+      method: "sigstore-keyless"

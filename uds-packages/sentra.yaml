@@ -27,7 +27,7 @@ metadata:
     szl.io/doctrine-pin: "749/14/163"
     szl.io/kernel-commit: "c7c0ba17"
     szl.io/slsa-level: "L1"
-    szl.io/fleet-version: "0.1.0"
+    szl.io/fleet-version: "0.2.0"
 spec:
   network:
     expose:

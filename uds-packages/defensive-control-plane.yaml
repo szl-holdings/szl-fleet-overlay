@@ -1,0 +1,24 @@
+# Copyright 2026 SZL Holdings
+# SPDX-License-Identifier: Apache-2.0
+#
+# Canonical standalone UDS Package CR for the SZL Defensive Control Plane.
+# The application itself has no gateway, OIDC, metrics, provider connector, or mutation API.
+apiVersion: uds.dev/v1alpha1
+kind: Package
+metadata:
+  name: szl-defensive-control-plane
+  namespace: szl-defensive-control-plane
+  annotations:
+    szl.io/doctrine-version: "v11"
+    szl.io/doctrine-pin: "749/14/163"
+    szl.io/kernel-commit: "c7c0ba17"
+    szl.io/slsa-level: "L1"
+    szl.io/fleet-version: "0.2.0"
+    szl.io/source-revision: "cbb7bddf0b584987830617e68725e36e9ed27434"
+    szl.io/image-digest: "sha256:01f1fa2d3a4eb3cffb873f7393b64050df77f4383fa9d219163fa0be0bd6dce6"
+spec:
+  network:
+    allow:
+      - direction: Ingress
+        description: "IntraNamespace pods and health probes"
+        remoteGenerated: IntraNamespace

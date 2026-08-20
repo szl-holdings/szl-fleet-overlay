@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 scripts/seed-receipts.py — SZL Demo Receipt Seeder
-Generates 20 demo receipts across the 5 flagships so the receipt chain panel
-has real-looking data for the Warhacker demo.
+Generates 24 explicitly labeled synthetic receipts across five flagships and the
+Defensive Control Plane for the Warhacker demo.
 
 Doctrine v11 LOCKED 749/14/163 · Λ = Conjecture 1 · SLSA L1
 NO Iron Bank / FedRAMP / CMMC / SWFT / Mission Owner
@@ -21,6 +21,9 @@ from datetime import datetime, timezone
 RECEIPTS_DIR = os.path.join(os.path.dirname(__file__), "..", "receipts")
 OUTPUT_FILE  = os.path.join(RECEIPTS_DIR, "demo-receipts.jsonl")
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 DOCTRINE = {
     "version": "v11",
     "pin": "749/14/163",
@@ -29,7 +32,7 @@ DOCTRINE = {
     "slsa_level": "L1",
 }
 
-# Representative actions per flagship (4 per app = 20 total)
+# Representative synthetic actions (4 per surface = 24 total)
 FLAGSHIP_ACTIONS = {
     "a11oy": [
         {
@@ -200,6 +203,32 @@ FLAGSHIP_ACTIONS = {
             "sorries": 163,
         },
     ],
+    "defensive-control-plane": [
+        {
+            "action": "fixture.event.ingest",
+            "input": {"source": "local-fixture", "signed": True},
+            "verdict": "PASS",
+            "reason": "accepted_once",
+        },
+        {
+            "action": "fixture.event.replay",
+            "input": {"source_event_id": "demo-event-1"},
+            "verdict": "PASS",
+            "reason": "replayed_without_duplicate_case",
+        },
+        {
+            "action": "fixture.ticket.preview",
+            "input": {"connector": "fake", "dry_run": True},
+            "verdict": "PASS",
+            "reason": "zero_mutation_calls",
+        },
+        {
+            "action": "fixture.restore.verify",
+            "input": {"scope": "disposable-local"},
+            "verdict": "PASS",
+            "reason": "content_and_schema_digests_match",
+        },
+    ],
 }
 
 
@@ -208,7 +237,7 @@ def sha3_256(data: bytes) -> str:
 
 
 def build_receipt(flagship: str, action_data: dict, prev_hash: str, seq: int) -> dict:
-    """Build a DSSE-style receipt envelope for a demo action."""
+    """Build an explicitly modeled hash-chain fixture for a demo action."""
     now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
     payload = {
@@ -221,6 +250,9 @@ def build_receipt(flagship: str, action_data: dict, prev_hash: str, seq: int) ->
         "reason": action_data.get("reason", ""),
         "doctrine": DOCTRINE,
         "prev_hash": prev_hash,
+        "evidence_state": "MODELED",
+        "scope": "synthetic-demo",
+        "production_operational": False,
     }
     # Add any extra fields
     for k in action_data:
@@ -230,8 +262,8 @@ def build_receipt(flagship: str, action_data: dict, prev_hash: str, seq: int) ->
     payload_bytes = json.dumps(payload, sort_keys=True).encode()
     receipt_hash  = sha3_256(payload_bytes)
 
-    # SLSA L1 honest: sig is a deterministic HMAC-SHA3-256 stand-in
-    # (PLACEHOLDER — real cosign ECDSA-P256 requires key injection)
+    # This is an unkeyed deterministic placeholder digest, not HMAC or DSSE.
+    # The protected release workflow separately produces real cosign bundles.
     sig_input   = f"DEMO-PLACEHOLDER:{flagship}:{action_data['action']}:{receipt_hash}".encode()
     sig_value   = hashlib.sha3_256(sig_input).hexdigest()
 
@@ -247,9 +279,12 @@ def build_receipt(flagship: str, action_data: dict, prev_hash: str, seq: int) ->
         "signature": {
             "algorithm": "PLACEHOLDER-SHA3-256",
             "value": sig_value,
-            "note": "PLACEHOLDER — inject COSIGN_ECDSA_KEY for real signature per DSSE_FIX_PLAN.md",
+            "note": "MODELED unkeyed digest; not a signature or release evidence",
         },
         "doctrine": DOCTRINE,
+        "evidence_state": "MODELED",
+        "scope": "synthetic-demo",
+        "production_operational": False,
     }
 
 
@@ -260,10 +295,17 @@ def main():
     prev_hash = "0" * 64  # genesis hash
     seq       = 0
 
-    # Interleave flagships in deployment order: a11oy → sentra → amaru → rosie → killinchu
-    flagship_order = ["a11oy", "sentra", "amaru", "rosie", "killinchu"]
+    # Interleave five flagships and the local-fixture DCP surface.
+    flagship_order = [
+        "a11oy",
+        "sentra",
+        "amaru",
+        "rosie",
+        "killinchu",
+        "defensive-control-plane",
+    ]
 
-    # Build 20 receipts (4 per flagship) in round-robin order
+    # Build 24 synthetic receipts (4 per surface) in round-robin order.
     action_iterators = {f: iter(FLAGSHIP_ACTIONS[f]) for f in flagship_order}
     counts           = {f: 0 for f in flagship_order}
 
@@ -284,7 +326,7 @@ def main():
             time.sleep(0.01)
 
     # Write JSONL
-    with open(OUTPUT_FILE, "w") as f:
+    with open(OUTPUT_FILE, "w", encoding="utf-8", newline="\n") as f:
         for r in receipts:
             f.write(json.dumps(r) + "\n")
 
@@ -301,11 +343,11 @@ def main():
 
     # Also write a human-readable summary
     summary_file = os.path.join(RECEIPTS_DIR, "demo-receipts-summary.md")
-    with open(summary_file, "w") as f:
+    with open(summary_file, "w", encoding="utf-8", newline="\n") as f:
         f.write("# SZL Demo Receipt Chain Summary\n\n")
         f.write(f"Generated: {datetime.now(timezone.utc).isoformat()}\n\n")
-        f.write("Doctrine v11 LOCKED 749/14/163 · Λ = Conjecture 1 · SLSA L1  \n")
-        f.write("**Signatures are PLACEHOLDER** — inject COSIGN_ECDSA_KEY for real DSSE\n\n")
+        f.write("Doctrine v11 LOCKED 749/14/163 · Λ = Conjecture 1 · SLSA L1\n\n")
+        f.write("**Evidence state: MODELED. Signatures: PLACEHOLDER. Production operational: false.**\n\n")
         f.write("| Seq | Flagship | Action | Verdict | Hash (12 chars) |\n")
         f.write("|-----|----------|--------|---------|----------------|\n")
         for r in receipts:
@@ -313,10 +355,10 @@ def main():
                 f"| {r['seq']} | {r['flagship']} | {r['action']} "
                 f"| {r['verdict']} | {r['receipt_hash'][:12]}... |\n"
             )
-        f.write(f"\n**Total receipts:** {len(receipts)}  \n")
-        f.write(f"**Chain head:** `{receipts[-1]['receipt_hash']}`  \n")
+        f.write(f"\n**Total receipts:** {len(receipts)}\n\n")
+        f.write(f"**Chain head:** `{receipts[-1]['receipt_hash']}`\n\n")
         f.write(
-            "\nSigned-off-by: Yachay <yachay@szlholdings.ai>  \n"
+            "Signed-off-by: Yachay <yachay@szlholdings.ai>\n\n"
             "Co-Authored-By: Perplexity Computer Agent <agent@perplexity.ai>\n"
         )
 
