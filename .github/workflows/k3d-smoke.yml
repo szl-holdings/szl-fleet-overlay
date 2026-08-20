@@ -1,8 +1,10 @@
 # .github/workflows/k3d-smoke.yml
 # SZL Fleet Overlay — k3d Smoke Test CI
 #
-# Runs on every PR to szl-fleet-overlay.
-# Spins up a k3d cluster, deploys UDS Core + 5 flagship stubs, validates Package CRs.
+# Runs on every relevant PR to szl-fleet-overlay.
+# Public structural and cluster checks always run. The private DCP image smoke
+# and full Zarf package build run only when a same-repository event receives a
+# dedicated read-only package credential; fork workflows never receive it.
 #
 # Doctrine v11 LOCKED 749/14/163 · Λ = Conjecture 1 · SLSA L1
 # Section 889 = 5 vendors · NO Iron Bank / FedRAMP / CMMC / SWFT / Mission Owner
@@ -36,7 +38,6 @@ on:
 
 permissions:
   contents: read
-  packages: read          # GHCR image pull
 
 concurrency:
   group: k3d-smoke-${{ github.ref }}
@@ -52,7 +53,8 @@ env:
   #   ghcr.io/defenseunicorns/packages/uds/core:1.5.0-upstream
   # (the demo/slim-dev target named in team/uds_latest_specs.md). UDS Core 1.x exists
   # upstream; 1.5.0 is the unified target — matched to szl-uds-deployment (was 0.42.0; see #2 drift). The deploy step is continue-on-error
-  # (non-gating); the gating proof is the cluster-independent package build below.
+  # (non-gating); public structural checks remain gating, while the full package
+  # build additionally requires the private-image credential described below.
   UDS_CORE_TAG:    1.5.0-upstream
   CLUSTER_NAME:    szl-smoke
   KUBECONFIG:      /tmp/szl-smoke-kubeconfig.yaml
@@ -174,10 +176,10 @@ jobs:
           PY
 
   # ───────────────────────────────────────────────────────────────────────────
-  # Job 2: k3d-smoke — full cluster smoke test
+  # Job 2: public structural cluster test plus optional private-image proof
   # ───────────────────────────────────────────────────────────────────────────
   k3d-smoke:
-    name: k3d Smoke — full cluster
+    name: k3d Smoke — public structural cluster
     runs-on: ubuntu-22.04
     needs: preflight
     timeout-minutes: 45
@@ -227,14 +229,37 @@ jobs:
         env:
           UDS_VERSION: ${{ env.UDS_VERSION }}
 
+      - name: Detect private DCP pull credentials
+        id: dcp-credentials
+        env:
+          DCP_PULL_TOKEN: ${{ secrets.DCP_PULL_TOKEN }}
+          DCP_PULL_USERNAME: ${{ secrets.DCP_PULL_USERNAME }}
+          TRUSTED_EVENT: >-
+            ${{ (github.event_name != 'pull_request' ||
+                 github.event.pull_request.head.repo.full_name == github.repository) &&
+                github.actor != 'dependabot[bot]' }}
+        run: |
+          set -euo pipefail
+          if [ "${TRUSTED_EVENT}" = "true" ]; then
+            test -n "${DCP_PULL_USERNAME}" \
+              || { echo "Missing DCP_PULL_USERNAME for trusted CI event"; exit 1; }
+            test -n "${DCP_PULL_TOKEN}" \
+              || { echo "Missing DCP_PULL_TOKEN for trusted CI event"; exit 1; }
+            echo "available=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "available=false" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Log in to GHCR for the private DCP image
+        if: steps.dcp-credentials.outputs.available == 'true'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
+          username: ${{ secrets.DCP_PULL_USERNAME }}
+          password: ${{ secrets.DCP_PULL_TOKEN }}
 
       - name: Pull and self-smoke the exact DCP image
+        if: steps.dcp-credentials.outputs.available == 'true'
         env:
           DCP_IMAGE: ghcr.io/szl-holdings/szl-defensive-control-plane@sha256:01f1fa2d3a4eb3cffb873f7393b64050df77f4383fa9d219163fa0be0bd6dce6
         run: |
@@ -284,22 +309,34 @@ jobs:
           docker rm -f "${container}" >/dev/null
           trap - EXIT
 
+      - name: Record unavailable private-image proof
+        if: steps.dcp-credentials.outputs.available != 'true'
+        run: |
+          echo "::notice title=private DCP proof unavailable::No dedicated read-only DCP package credential"
+          echo "::notice::was available to this event. Immutable image pull, container self-smoke, and"
+          echo "::notice::full Zarf build are UNAVAILABLE here; public manifest, lint, receipt, Helm,"
+          echo "::notice::and cluster-structure gates continue. Forks never receive the credential."
+
       # ─── Cluster-independent deploy-SHAPE proof ──────────────────────────────
-      # This ALWAYS runs (no cluster needed) so the gate proves something real
-      # even when the heavy UDS Core deploy can't spin up on the hosted runner.
-      # It builds the fleet Zarf package end-to-end — a hard assertion that the
-      # overlay is a genuine, buildable, deployable artifact (not just lint-clean
-      # YAML). Mirrors the deploy-proof squad's minimal-real-package honesty.
+      # A real Zarf build vendors the private immutable DCP image, so this runs
+      # only with the dedicated read-only package credential. Its absence is
+      # reported as UNAVAILABLE rather than converted into a false green proof.
       - name: Deploy-shape proof — build the fleet Zarf package
+        if: steps.dcp-credentials.outputs.available == 'true'
         run: |
           set -euo pipefail
           uds zarf package create . --confirm --no-color --log-level warn \
             --output /tmp/fleet-pkg
-          PKG=$(ls /tmp/fleet-pkg/zarf-package-szl-fleet-overlay-*.tar.zst 2>/dev/null | head -1)
+          PKG=$(find /tmp/fleet-pkg -maxdepth 1 -type f \
+            -name 'zarf-package-szl-fleet-overlay-*.tar.zst' -print -quit)
           test -n "$PKG" || { echo "::error::fleet Zarf package was not produced"; exit 1; }
           echo "  ✅  built deployable artifact: $(basename "$PKG") ($(du -h "$PKG" | cut -f1))"
           uds zarf package inspect definition "$PKG" >/dev/null \
             && echo "  ✅  package definition inspects clean"
+
+      - name: Log out of the private registry session
+        if: always() && steps.dcp-credentials.outputs.available == 'true'
+        run: docker logout ghcr.io
 
       - name: Create k3d cluster
         id: create-cluster
@@ -349,8 +386,13 @@ jobs:
           echo "::notice title=in-cluster smoke skipped::The k3d cluster, Zarf seed registry, or UDS Core"
           echo "::notice::could not stabilize within this hosted runner's time/RAM budget (the"
           echo "::notice::seed-registry chart commonly exceeds GitHub-runner limits). This does NOT"
-          echo "::notice::indicate a fleet defect: the GATING 'Deploy-shape proof' above already built"
-          echo "::notice::and inspected the real fleet Zarf package. Run the full in-cluster deploy on"
+          if [ "${{ steps.dcp-credentials.outputs.available }}" = "true" ]; then
+            echo "::notice::indicate a fleet defect: the credentialed package proof built and inspected"
+            echo "::notice::the real fleet Zarf package. Run the full in-cluster deploy on"
+          else
+            echo "::notice::indicate a fleet defect. Public structural gates ran, but the private-image"
+            echo "::notice::and full Zarf package proofs remain explicitly UNAVAILABLE. Run the full deploy on"
+          fi
           echo "::notice::the founder's tower per docs/WARHACKER_DEMO_RUNBOOK.md (RTX tower, 32 GB)."
 
       - name: Apply SZL namespaces
