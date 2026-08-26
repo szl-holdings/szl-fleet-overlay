@@ -624,7 +624,7 @@ Phase                     Command
 ─────────────────────────────────────────────────────────────────
 1. Zarf init (once)       uds zarf init --confirm
 2. Deploy uds-core        uds deploy oci://ghcr.io/defenseunicorns/packages/uds/core:1.5.0-upstream
-3. Pull fleet overlay     zarf package pull oci://ghcr.io/szl-holdings/packages/szl-fleet-overlay:0.2.0-amd64
+3. Pull fleet overlay     zarf package pull oci://ghcr.io/szl-holdings/packages/szl-fleet-overlay:0.2.0 --architecture amd64
 4. Verify release bundle  cosign verify-blob --bundle zarf-package-szl-fleet-overlay-amd64-0.2.0.tar.zst.cosign.bundle \
                             --certificate-identity https://github.com/szl-holdings/szl-fleet-overlay/.github/workflows/zarf-package-sign.yml@refs/tags/v0.2.0 \
                             --certificate-oidc-issuer https://token.actions.githubusercontent.com \

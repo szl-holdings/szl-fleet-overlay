@@ -23,7 +23,7 @@ Layers doctrine-pinned, hash-chained modeled receipt fixtures on top of UDS Flee
 
 ```bash
 # Pull the v0.2.0 overlay (register five pre-existing flagships; deploy DCP)
-zarf package pull oci://ghcr.io/szl-holdings/packages/szl-fleet-overlay:0.2.0-amd64
+zarf package pull oci://ghcr.io/szl-holdings/packages/szl-fleet-overlay:0.2.0 --architecture amd64
 
 # Download the durable verification bundle from the matching GitHub release
 gh release download v0.2.0 --repo szl-holdings/szl-fleet-overlay \
@@ -154,7 +154,7 @@ Phase                     Command
 ─────────────────────────────────────────────────────────────────
 1. Zarf init (once)       uds zarf init --confirm
 2. Deploy uds-core        uds deploy oci://ghcr.io/defenseunicorns/packages/uds/core:1.5.0-upstream
-3. Pull fleet package     zarf package pull oci://ghcr.io/szl-holdings/packages/szl-fleet-overlay:0.2.0-amd64
+3. Pull fleet package     zarf package pull oci://ghcr.io/szl-holdings/packages/szl-fleet-overlay:0.2.0 --architecture amd64
    Deploy fleet package   uds zarf package deploy zarf-package-szl-fleet-overlay-amd64-0.2.0.tar.zst --confirm
    (or Helm variant)      helm upgrade --install szl-fleet-overlay ./chart -n szl-system --create-namespace \
                             -f chart/values/prod.yaml

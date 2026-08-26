@@ -480,7 +480,8 @@ helm status szl-fleet-overlay -n szl-system
 # Pull the immutable prior version, download its matching release bundle, verify it,
 # then deploy the local file. Do not use Zarf removal as an evidence-preserving rollback.
 zarf package pull \
-  oci://ghcr.io/szl-holdings/packages/szl-fleet-overlay:<PREVIOUS_VERSION>-amd64
+  oci://ghcr.io/szl-holdings/packages/szl-fleet-overlay:<PREVIOUS_VERSION> \
+  --architecture amd64
 gh release download "v<PREVIOUS_VERSION>" --repo szl-holdings/szl-fleet-overlay \
   --pattern 'zarf-package-*.cosign.bundle'
 cosign verify-blob \

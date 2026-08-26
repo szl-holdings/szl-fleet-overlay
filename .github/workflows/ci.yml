@@ -172,3 +172,21 @@ jobs:
           set -euo pipefail
           python3 scripts/source_checksums.py check
           echo "Chart and config manifests clean — no forbidden framework references"
+
+      - name: Verify canonical Zarf OCI reference shape
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path(".github/workflows/zarf-package-sign.yml").read_text(encoding="utf-8")
+          wrong = 'packages/${PACKAGE_NAME}:${VERSION}-amd64'
+          correct = 'packages/${PACKAGE_NAME}:${VERSION}'
+          if wrong in source:
+              raise SystemExit(f"architecture must not be encoded in the OCI tag: {wrong}")
+          if source.count(correct) != 5:
+              raise SystemExit("publisher must use one canonical :${VERSION} OCI ref in all five gates")
+          if source.count("--architecture amd64") != 2:
+              raise SystemExit("both Zarf pull paths must select amd64 explicitly")
+          print("Canonical Zarf OCI tag and explicit architecture selectors are enforced")
+          PY

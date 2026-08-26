@@ -34,6 +34,7 @@ permissions:
 
 env:
   ZARF_VERSION: "v0.77.0"
+  ZARF_LINUX_AMD64_SHA256: 7e335ffe9861d6ce254d75b31fde9c96c0fa83469c82cd20228b27e63d18dd85
   COSIGN_VERSION: "v2.6.3"
   SYFT_VERSION: "v1.18.1"
   REGISTRY: "ghcr.io"
@@ -125,6 +126,8 @@ jobs:
           set -euo pipefail
           URL="https://github.com/zarf-dev/zarf/releases/download/${ZARF_VERSION}/zarf_${ZARF_VERSION}_Linux_amd64"
           curl -fSL --retry 3 --retry-delay 5 "${URL}" -o /usr/local/bin/zarf
+          printf '%s  %s\n' "${ZARF_LINUX_AMD64_SHA256}" /usr/local/bin/zarf \
+            | sha256sum --check --strict
           chmod +x /usr/local/bin/zarf
           file /usr/local/bin/zarf | grep -q ELF \
             || { echo "Downloaded Zarf asset is not an ELF executable"; exit 1; }
@@ -159,7 +162,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          IMAGE_REF="${REGISTRY}/${ORG}/packages/${PACKAGE_NAME}:${VERSION}-amd64"
+          IMAGE_REF="${REGISTRY}/${ORG}/packages/${PACKAGE_NAME}:${VERSION}"
           set +e
           probe=$(docker manifest inspect "${IMAGE_REF}" 2>&1)
           probe_status=$?
@@ -444,9 +447,9 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          OCI_REF="oci://${REGISTRY}/${ORG}/packages/${PACKAGE_NAME}:${VERSION}-amd64"
+          OCI_REF="oci://${REGISTRY}/${ORG}/packages/${PACKAGE_NAME}:${VERSION}"
           mkdir -p readback
-          zarf package pull "${OCI_REF}" --output-directory readback
+          zarf package pull "${OCI_REF}" --architecture amd64 --output-directory readback
           pulled=$(find readback -maxdepth 1 -type f \
             -name "zarf-package-${PACKAGE_NAME}-amd64-${VERSION}.tar.zst" -print -quit)
           test -n "${pulled}"
@@ -462,7 +465,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          IMAGE_REF="${REGISTRY}/${ORG}/packages/${PACKAGE_NAME}:${VERSION}-amd64"
+          IMAGE_REF="${REGISTRY}/${ORG}/packages/${PACKAGE_NAME}:${VERSION}"
           set +e
           probe=$(docker manifest inspect "${IMAGE_REF}" 2>&1)
           probe_status=$?
@@ -490,7 +493,7 @@ jobs:
         run: |
           set -euo pipefail
           PKG="dist/${pkg_file}"
-          OCI_REF="oci://${REGISTRY}/${ORG}/packages/${PACKAGE_NAME}:${VERSION}-amd64"
+          OCI_REF="oci://${REGISTRY}/${ORG}/packages/${PACKAGE_NAME}:${VERSION}"
           zarf package publish "${PKG}" "oci://${REGISTRY}/${ORG}/packages" \
             --no-progress
           echo "Published: ${OCI_REF}"
@@ -500,10 +503,23 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          OCI_REF="oci://${REGISTRY}/${ORG}/packages/${PACKAGE_NAME}:${VERSION}-amd64"
+          OCI_REF="oci://${REGISTRY}/${ORG}/packages/${PACKAGE_NAME}:${VERSION}"
           rm -rf readback
-          mkdir -p readback
-          zarf package pull "${OCI_REF}" --output-directory readback
+          pulled_ok=false
+          for attempt in 1 2 3 4 5; do
+            rm -rf readback
+            mkdir -p readback
+            if zarf package pull "${OCI_REF}" \
+              --architecture amd64 \
+              --output-directory readback; then
+              pulled_ok=true
+              break
+            fi
+            if [ "${attempt}" -lt 5 ]; then
+              sleep "$((attempt * 3))"
+            fi
+          done
+          test "${pulled_ok}" = "true"
           pulled=$(find readback -maxdepth 1 -type f -name "zarf-package-${PACKAGE_NAME}-amd64-${VERSION}.tar.zst" -print -quit)
           test -n "${pulled}"
           test "$(find readback -maxdepth 1 -type f -name 'zarf-package-*.tar.zst' | wc -l)" -eq 1
